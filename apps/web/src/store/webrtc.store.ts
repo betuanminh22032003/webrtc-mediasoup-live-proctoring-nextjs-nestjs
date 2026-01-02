@@ -17,7 +17,7 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import type { Participant, User } from '@proctoring/shared';
-import { ConnectionState, MediaTrackType, UserRole } from '@proctoring/shared';
+import { ConnectionState } from '@proctoring/shared';
 
 // ============================================================================
 // Types
@@ -133,7 +133,7 @@ const initialState: WebRTCState = {
 
 export const useWebRTCStore = create<WebRTCStore>()(
   devtools(
-    (set, get) => ({
+    (set, _get) => ({
       ...initialState,
 
       // User actions

@@ -2,12 +2,6 @@
 const nextConfig = {
   reactStrictMode: true,
 
-  // Enable experimental features
-  experimental: {
-    // Server actions for future use
-    serverActions: true,
-  },
-
   // Transpile workspace packages
   transpilePackages: ['@proctoring/shared', '@proctoring/webrtc-utils'],
 

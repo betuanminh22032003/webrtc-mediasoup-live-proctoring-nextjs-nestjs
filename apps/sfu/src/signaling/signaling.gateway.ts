@@ -39,7 +39,6 @@ import {
   RoomJoinSchema,
 } from '@proctoring/shared';
 import { signalingLogger } from '../common/logger';
-import { SignalingService } from './signaling.service';
 import { RoomService } from './room.service';
 
 /**
@@ -67,7 +66,6 @@ export class SignalingGateway
   private heartbeatInterval: NodeJS.Timeout | null = null;
 
   constructor(
-    private readonly signalingService: SignalingService,
     private readonly roomService: RoomService
   ) {}
 

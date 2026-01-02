@@ -15,12 +15,10 @@
 import { useCallback, useRef, useEffect, useState } from 'react';
 import {
   DEFAULT_STUN_SERVERS,
-  SignalMessageType,
   ConnectionState,
 } from '@proctoring/shared';
 import {
   mapPeerConnectionState,
-  mapIceConnectionState,
 } from '@proctoring/webrtc-utils';
 import { useWebRTCStore } from '@/store/webrtc.store';
 
@@ -110,7 +108,7 @@ export function usePeerConnection(
     };
 
     // ICE gathering state change handler
-    pc.onicegatheringstate = () => {
+    pc.onicegatheringstatechange = () => {
       setIceGatheringState(pc.iceGatheringState);
       console.log('ICE gathering state:', pc.iceGatheringState);
     };
