@@ -1,0 +1,78 @@
+# Web Client Dockerfile
+#
+# WHY multi-stage build?
+# - Smaller final image
+# - Build cache optimization
+# - Only production files in final image
+
+# ============================================================================
+# Stage 1: Dependencies
+# ============================================================================
+FROM node:20-alpine AS deps
+
+RUN apk add --no-cache libc6-compat
+
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
+
+WORKDIR /app
+
+# Copy workspace configuration
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
+
+# Copy package.json files for all packages
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/webrtc-utils/package.json ./packages/webrtc-utils/
+COPY apps/web/package.json ./apps/web/
+
+# Install dependencies
+RUN pnpm install --frozen-lockfile
+
+# ============================================================================
+# Stage 2: Build
+# ============================================================================
+FROM deps AS builder
+
+WORKDIR /app
+
+# Copy source code
+COPY packages/shared ./packages/shared
+COPY packages/webrtc-utils ./packages/webrtc-utils
+COPY apps/web ./apps/web
+COPY tsconfig.json ./
+
+# Build shared packages first
+RUN pnpm --filter @proctoring/shared build
+RUN pnpm --filter @proctoring/webrtc-utils build
+
+# Build web app
+ENV NEXT_TELEMETRY_DISABLED 1
+RUN pnpm --filter @proctoring/web build
+
+# ============================================================================
+# Stage 3: Production
+# ============================================================================
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+ENV NODE_ENV production
+ENV NEXT_TELEMETRY_DISABLED 1
+
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# Copy built application
+COPY --from=builder /app/apps/web/public ./apps/web/public
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
+
+USER nextjs
+
+EXPOSE 3000
+
+ENV PORT 3000
+ENV HOSTNAME "0.0.0.0"
+
+CMD ["node", "apps/web/server.js"]

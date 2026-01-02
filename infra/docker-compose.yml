@@ -1,0 +1,108 @@
+# Docker Compose for WebRTC Live Proctoring System
+#
+# WHY Docker Compose?
+# - Local development environment matching production
+# - Easy onboarding for new developers
+# - Reproducible builds
+#
+# SERVICES:
+# - web: Next.js frontend
+# - sfu: NestJS + mediasoup SFU server
+#
+# FUTURE ADDITIONS (Phase 4+):
+# - redis: Distributed state (scaling)
+# - recording: FFmpeg recording service
+
+version: '3.9'
+
+services:
+  # ============================================================================
+  # SFU Server (NestJS + mediasoup)
+  # ============================================================================
+  sfu:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.sfu
+    container_name: proctoring-sfu
+    ports:
+      # HTTP + WebSocket
+      - "3001:3001"
+      # RTP ports for mediasoup (UDP)
+      - "40000-40100:40000-40100/udp"
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - HOST=0.0.0.0
+      - MEDIASOUP_LISTEN_IP=0.0.0.0
+      # IMPORTANT: Set to your machine's IP for external access
+      # - MEDIASOUP_ANNOUNCED_IP=192.168.1.x
+      - MEDIASOUP_MIN_PORT=40000
+      - MEDIASOUP_MAX_PORT=40100
+      - LOG_LEVEL=debug
+      - CORS_ORIGIN=http://localhost:3000
+    volumes:
+      # Mount recordings directory
+      - ../recordings:/app/recordings
+    restart: unless-stopped
+    # Network mode host can help with WebRTC in some scenarios
+    # network_mode: host
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ============================================================================
+  # Web Client (Next.js)
+  # ============================================================================
+  web:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.web
+    container_name: proctoring-web
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_WS_URL=ws://localhost:3001/ws
+      - NEXT_PUBLIC_API_URL=http://localhost:3001
+    depends_on:
+      sfu:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ============================================================================
+  # TURN Server (Coturn) - Optional for NAT traversal
+  # ============================================================================
+  # Uncomment for production or restrictive network testing
+  #
+  # coturn:
+  #   image: coturn/coturn:latest
+  #   container_name: proctoring-turn
+  #   ports:
+  #     - "3478:3478/udp"
+  #     - "3478:3478/tcp"
+  #     - "5349:5349/udp"
+  #     - "5349:5349/tcp"
+  #     - "49152-65535:49152-65535/udp"
+  #   volumes:
+  #     - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+  #   restart: unless-stopped
+
+# Named volumes for persistent data
+volumes:
+  recordings:
+    driver: local
+
+# Networks
+networks:
+  default:
+    name: proctoring-network
+    driver: bridge

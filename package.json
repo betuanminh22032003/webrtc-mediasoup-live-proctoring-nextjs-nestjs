@@ -1,0 +1,58 @@
+{
+  "name": "webrtc-mediasoup-live-proctoring",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Production-grade WebRTC Live Proctoring System with mediasoup SFU, Next.js, and NestJS",
+  "keywords": [
+    "webrtc",
+    "mediasoup",
+    "sfu",
+    "live-proctoring",
+    "nestjs",
+    "nextjs",
+    "real-time"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "packageManager": "pnpm@8.15.0",
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "dev:web": "pnpm --filter @proctoring/web dev",
+    "dev:sfu": "pnpm --filter @proctoring/sfu dev",
+    "build": "pnpm -r run build",
+    "build:web": "pnpm --filter @proctoring/web build",
+    "build:sfu": "pnpm --filter @proctoring/sfu build",
+    "lint": "pnpm -r run lint",
+    "lint:fix": "pnpm -r run lint:fix",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "typecheck": "pnpm -r run typecheck",
+    "clean": "pnpm -r run clean && rimraf node_modules",
+    "docker:up": "docker-compose -f infra/docker-compose.yml up -d",
+    "docker:down": "docker-compose -f infra/docker-compose.yml down",
+    "docker:logs": "docker-compose -f infra/docker-compose.yml logs -f",
+    "prepare": "husky install"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "eslint": "^8.56.0",
+    "husky": "^8.0.3",
+    "lint-staged": "^15.2.0",
+    "prettier": "^3.2.0",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.3.3"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md}": [
+      "prettier --write"
+    ]
+  }
+}

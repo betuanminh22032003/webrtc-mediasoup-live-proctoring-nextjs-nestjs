@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Video element styling for proctoring */
+@layer components {
+  .video-container {
+    @apply relative w-full aspect-video bg-gray-900 rounded-lg overflow-hidden;
+  }
+
+  .video-element {
+    @apply w-full h-full object-cover;
+  }
+
+  .video-placeholder {
+    @apply absolute inset-0 flex items-center justify-center bg-gray-800 text-gray-400;
+  }
+
+  /* Connection status indicators */
+  .status-indicator {
+    @apply w-3 h-3 rounded-full;
+  }
+
+  .status-connected {
+    @apply bg-proctoring-success;
+  }
+
+  .status-connecting {
+    @apply bg-proctoring-warning animate-pulse;
+  }
+
+  .status-disconnected {
+    @apply bg-proctoring-danger;
+  }
+
+  /* Recording indicator */
+  .recording-indicator {
+    @apply flex items-center gap-2 px-3 py-1 bg-red-600 text-white rounded-full text-sm font-medium;
+  }
+
+  .recording-dot {
+    @apply w-2 h-2 bg-white rounded-full animate-recording;
+  }
+}
+
+/* Dark mode support */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}

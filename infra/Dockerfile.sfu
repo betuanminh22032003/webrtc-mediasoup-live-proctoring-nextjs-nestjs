@@ -1,0 +1,106 @@
+# SFU Server Dockerfile
+#
+# WHY multi-stage build?
+# - Smaller final image (no dev dependencies)
+# - Build cache optimization
+# - Security (no build tools in production)
+#
+# SPECIAL REQUIREMENTS for mediasoup:
+# - Python for native module compilation
+# - Build tools for C++ compilation
+# - mediasoup requires specific glibc version
+
+# ============================================================================
+# Stage 1: Dependencies
+# ============================================================================
+FROM node:20-bookworm-slim AS deps
+
+# Install build dependencies for mediasoup
+# WHY these packages?
+# - python3: Required for node-gyp
+# - build-essential: C++ compiler for native modules
+# - pip: For Python dependencies
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
+
+WORKDIR /app
+
+# Copy workspace configuration
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
+
+# Copy package.json files for all packages
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/webrtc-utils/package.json ./packages/webrtc-utils/
+COPY apps/sfu/package.json ./apps/sfu/
+
+# Install dependencies
+RUN pnpm install --frozen-lockfile
+
+# ============================================================================
+# Stage 2: Build
+# ============================================================================
+FROM deps AS builder
+
+WORKDIR /app
+
+# Copy source code
+COPY packages/shared ./packages/shared
+COPY packages/webrtc-utils ./packages/webrtc-utils
+COPY apps/sfu ./apps/sfu
+COPY tsconfig.json ./
+
+# Build shared packages first
+RUN pnpm --filter @proctoring/shared build
+RUN pnpm --filter @proctoring/webrtc-utils build
+
+# Build SFU
+RUN pnpm --filter @proctoring/sfu build
+
+# ============================================================================
+# Stage 3: Production
+# ============================================================================
+FROM node:20-bookworm-slim AS runner
+
+# Install runtime dependencies for mediasoup
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user for security
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nestjs
+
+WORKDIR /app
+
+# Copy built application
+COPY --from=builder --chown=nestjs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nestjs:nodejs /app/packages/shared/dist ./packages/shared/dist
+COPY --from=builder --chown=nestjs:nodejs /app/packages/shared/package.json ./packages/shared/
+COPY --from=builder --chown=nestjs:nodejs /app/packages/webrtc-utils/dist ./packages/webrtc-utils/dist
+COPY --from=builder --chown=nestjs:nodejs /app/packages/webrtc-utils/package.json ./packages/webrtc-utils/
+COPY --from=builder --chown=nestjs:nodejs /app/apps/sfu/dist ./apps/sfu/dist
+COPY --from=builder --chown=nestjs:nodejs /app/apps/sfu/package.json ./apps/sfu/
+
+# Create recordings directory
+RUN mkdir -p /app/recordings && chown nestjs:nodejs /app/recordings
+
+USER nestjs
+
+# Expose ports
+# HTTP/WebSocket
+EXPOSE 3001
+# RTP ports for mediasoup (configured range)
+EXPOSE 40000-49999/udp
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:3001/health || exit 1
+
+# Start server
+CMD ["node", "apps/sfu/dist/main.js"]
