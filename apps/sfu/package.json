@@ -6,7 +6,8 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "nest build",
-    "dev": "nest start --watch",
+    "dev": "ts-node-dev --respawn --transpile-only src/main.ts",
+    "dev:nest": "nest start --watch --preserveWatchOutput",
     "start": "node dist/main.js",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
@@ -17,20 +18,20 @@
   },
   "dependencies": {
     "@nestjs/common": "^10.3.0",
+    "@nestjs/config": "^3.1.1",
     "@nestjs/core": "^10.3.0",
     "@nestjs/platform-fastify": "^10.3.0",
-    "@nestjs/websockets": "^10.3.0",
     "@nestjs/platform-ws": "^10.3.0",
-    "@nestjs/config": "^3.1.1",
+    "@nestjs/websockets": "^10.3.0",
     "@proctoring/shared": "workspace:*",
     "mediasoup": "^3.13.0",
     "pino": "^8.17.0",
     "pino-pretty": "^10.3.0",
-    "zod": "^3.22.4",
-    "uuid": "^9.0.0",
     "reflect-metadata": "^0.2.1",
     "rxjs": "^7.8.1",
-    "ws": "^8.16.0"
+    "uuid": "^9.0.0",
+    "ws": "^8.16.0",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.2.0",
@@ -39,6 +40,8 @@
     "@types/uuid": "^9.0.7",
     "@types/ws": "^8.5.10",
     "rimraf": "^5.0.5",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
     "typescript": "^5.3.3"
   }
 }

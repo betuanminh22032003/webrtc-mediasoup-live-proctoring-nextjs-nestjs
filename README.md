@@ -273,8 +273,8 @@ pnpm test:e2e
 
 - [x] Phase 1: WebRTC signaling foundation
 - [x] Phase 2: mediasoup integration
-- [ ] Phase 3: Recording with FFmpeg
-- [ ] Phase 4: AI-based violation detection
+- [x] Phase 3: Proctoring logic (violation detection, event timeline)
+- [ ] Phase 4: Recording with FFmpeg
 - [ ] Phase 5: Multi-region deployment
 
 ## 📚 Documentation

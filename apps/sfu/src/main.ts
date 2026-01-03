@@ -31,7 +31,6 @@ async function bootstrap(): Promise<void> {
     {
       nodeEnv: config.NODE_ENV,
       port: config.PORT,
-      wsPort: config.WS_PORT,
     },
     'Starting SFU server...'
   );

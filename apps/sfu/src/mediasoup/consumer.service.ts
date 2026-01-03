@@ -107,9 +107,9 @@ import type {
   ConsumerScore,
   ConsumerLayers,
 } from 'mediasoup/types';
-import type { TransportService } from './transport.service';
-import type { RouterService } from './router.service';
-import type { ProducerService } from './producer.service';
+import { TransportService } from './transport.service';
+import { RouterService } from './router.service';
+import { ProducerService } from './producer.service';
 import type { ConsumerInfo, ConsumerAppData, ConsumerOptions } from './types';
 import { logger } from '../common/logger';
 

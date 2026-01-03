@@ -40,7 +40,7 @@
 
 import { Injectable } from '@nestjs/common';
 import type { RtpCapabilities, RtpParameters, MediaKind, DtlsParameters } from 'mediasoup/types';
-import type {
+import {
   RouterService,
   TransportService,
   ProducerService,

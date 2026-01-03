@@ -24,13 +24,6 @@ export const envSchema = z.object({
     .default('3001'),
   HOST: z.string().default('0.0.0.0'),
 
-  // WebSocket configuration
-  WS_PORT: z
-    .string()
-    .transform((val) => parseInt(val, 10))
-    .pipe(z.number().positive())
-    .default('3002'),
-
   // mediasoup configuration
   MEDIASOUP_LISTEN_IP: z.string().default('0.0.0.0'),
   MEDIASOUP_ANNOUNCED_IP: z.string().optional(),

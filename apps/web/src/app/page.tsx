@@ -5,7 +5,9 @@ import Link from 'next/link';
  *
  * This page serves as:
  * 1. Landing page with role selection
- * 2. Quick demo for Phase 1 (pure WebRTC)
+ * 2. Demo pages for testing features
+ *
+ * PHASE 3: Proctoring Logic - Complete
  */
 export default function HomePage(): JSX.Element {
   return (
@@ -17,8 +19,8 @@ export default function HomePage(): JSX.Element {
             🎥 Live Proctoring System
           </h1>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-400">
-              Phase 1: Pure WebRTC
+            <span className="text-sm text-green-400 bg-green-900/30 px-3 py-1 rounded-full">
+              Phase 3: Proctoring Logic ✓
             </span>
           </div>
         </div>
@@ -67,7 +69,8 @@ export default function HomePage(): JSX.Element {
                 <ul className="text-sm text-gray-500 space-y-1">
                   <li>✓ Webcam streaming</li>
                   <li>✓ Screen sharing</li>
-                  <li>✓ Connection monitoring</li>
+                  <li>✓ Violation detection</li>
+                  <li>✓ Real-time monitoring</li>
                 </ul>
               </div>
             </Link>
@@ -84,9 +87,10 @@ export default function HomePage(): JSX.Element {
                   and screens simultaneously.
                 </p>
                 <ul className="text-sm text-gray-500 space-y-1">
-                  <li>✓ Multi-stream view</li>
+                  <li>✓ Multi-stream grid view</li>
                   <li>✓ Event timeline</li>
                   <li>✓ Violation alerts</li>
+                  <li>✓ Candidate flagging</li>
                 </ul>
               </div>
             </Link>
@@ -95,12 +99,11 @@ export default function HomePage(): JSX.Element {
           {/* Quick Test Section */}
           <div className="p-6 bg-gray-900 rounded-xl border border-gray-800">
             <h3 className="text-lg font-semibold mb-4">
-              🧪 Phase 1: Pure WebRTC Demo
+              🧪 Camera & Screen Test
             </h3>
             <p className="text-gray-400 mb-4">
-              Test your camera and screen sharing without any external services.
-              This demonstrates the fundamentals of WebRTC before we add the
-              mediasoup SFU.
+              Test your camera and screen sharing before joining an exam session.
+              Verify that your equipment is working properly.
             </p>
             <Link
               href="/demo"
@@ -114,9 +117,9 @@ export default function HomePage(): JSX.Element {
           <div className="mt-12 text-center">
             <h3 className="text-lg font-semibold mb-4">Implementation Phases</h3>
             <div className="flex flex-wrap justify-center gap-3">
-              <PhaseIndicator phase={1} label="Pure WebRTC" active />
-              <PhaseIndicator phase={2} label="mediasoup SFU" />
-              <PhaseIndicator phase={3} label="Proctoring Logic" />
+              <PhaseIndicator phase={1} label="Pure WebRTC" completed />
+              <PhaseIndicator phase={2} label="mediasoup SFU" completed />
+              <PhaseIndicator phase={3} label="Proctoring Logic" active />
               <PhaseIndicator phase={4} label="Recording" />
               <PhaseIndicator phase={5} label="Scaling" />
             </div>
@@ -139,18 +142,24 @@ function PhaseIndicator({
   phase,
   label,
   active = false,
+  completed = false,
 }: {
   phase: number;
   label: string;
   active?: boolean;
+  completed?: boolean;
 }): JSX.Element {
+  const bgColor = active
+    ? 'bg-green-600'
+    : completed
+    ? 'bg-blue-900 border border-blue-600'
+    : 'bg-gray-800';
+
   return (
-    <div
-      className={`flex items-center gap-2 px-3 py-2 rounded-lg ${
-        active ? 'bg-blue-600' : 'bg-gray-800'
-      }`}
-    >
-      <span className="font-mono text-sm">P{phase}</span>
+    <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${bgColor}`}>
+      <span className="font-mono text-sm">
+        {completed ? '✓' : `P${phase}`}
+      </span>
       <span className="text-sm">{label}</span>
     </div>
   );
