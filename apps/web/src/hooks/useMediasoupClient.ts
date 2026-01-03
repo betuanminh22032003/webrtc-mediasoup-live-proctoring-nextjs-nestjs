@@ -114,8 +114,10 @@ export function useMediasoupClient({
   // Store actions
   const { addRemoteStream, removeRemoteStream } = useWebRTCStore();
 
-  // Note: sendMessage is defined but currently unused - kept for future use
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  /**
+   * Send message and wait for response (request-response pattern)
+   * Currently unused but kept for future bidirectional communication needs
+   */
   const sendMessage = useCallback((type: string, payload?: unknown): Promise<unknown> => {
     return new Promise((resolve, reject) => {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
@@ -145,6 +147,9 @@ export function useMediasoupClient({
       }, 10000);
     });
   }, []);
+  
+  // Make sendMessage available for potential future use
+  void sendMessage;
 
   /**
    * Send message without waiting for response (fire and forget)
@@ -505,6 +510,22 @@ export function useMediasoupClient({
       console.log('[WebSocket] Received message:', message.type, message);
 
       switch (message.type) {
+        case SignalMessageType.ROOM_STATE: {
+          console.log('[WebSocket] Received ROOM_STATE:', message.payload);
+          const roomState = message.payload as { participants: Array<{ user: { id: string; role: string; displayName: string } }> };
+          console.log('[WebSocket] Room participants:', roomState.participants?.map(p => ({
+            id: p.user.id,
+            role: p.user.role,
+            name: p.user.displayName
+          })));
+          break;
+        }
+
+        case SignalMessageType.PARTICIPANT_JOINED: {
+          console.log('[WebSocket] New participant joined:', message.payload);
+          break;
+        }
+
         case SignalMessageType.RTP_CAPABILITIES: {
           console.log('[WebSocket] Received RTP_CAPABILITIES, loading device...', message.payload);
           const { rtpCapabilities } = message.payload as { rtpCapabilities: unknown };
@@ -630,21 +651,23 @@ export function useMediasoupClient({
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log('[WebSocket] Connected successfully');
+        console.log('[WebSocket] Connected successfully to:', url);
+        console.log('[WebSocket] User info:', { userId, role, displayName, roomId });
         setIsConnected(true);
 
         // Wait a bit for server to setup listeners
         setTimeout(() => {
           // Join room
-          console.log('[WebSocket] Sending ROOM_JOIN...');
-          sendMessageNoWait(SignalMessageType.ROOM_JOIN, {
+          const joinPayload = {
             roomId,
             user: {
               id: userId,
               role,
               displayName: displayName || `${role}-${userId.slice(0, 8)}`,
             },
-          });
+          };
+          console.log('[WebSocket] Sending ROOM_JOIN with payload:', joinPayload);
+          sendMessageNoWait(SignalMessageType.ROOM_JOIN, joinPayload);
 
           // Request RTP capabilities after room join
           setTimeout(() => {
@@ -721,7 +744,7 @@ export function useMediasoupClient({
     return () => {
       disconnect();
     };
-  }, [autoConnect]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [autoConnect, connect]);
 
   return {
     isConnected,

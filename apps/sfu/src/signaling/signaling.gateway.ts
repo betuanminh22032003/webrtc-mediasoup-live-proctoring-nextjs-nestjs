@@ -25,27 +25,30 @@ import {
   WebSocketGateway,
   WebSocketServer,
   SubscribeMessage,
-  OnGatewayConnection,
-  OnGatewayDisconnect,
-  OnGatewayInit,
   MessageBody,
   ConnectedSocket,
 } from '@nestjs/websockets';
-import { Server, WebSocket } from 'ws';
+import type {
+  OnGatewayConnection,
+  OnGatewayDisconnect,
+  OnGatewayInit,
+} from '@nestjs/websockets';
+import { WebSocket } from 'ws';
+import type { Server } from 'ws';
 import { v4 as uuidv4 } from 'uuid';
 import {
   SignalMessageType,
-  UserRole,
   ConnectionState,
   SdpOfferSchema,
   SdpAnswerSchema,
   IceCandidateSchema,
   RoomJoinSchema,
 } from '@proctoring/shared';
+import type { UserRole } from '@proctoring/shared';
 import type { TransportDirectionType } from '../mediasoup/types';
 import { signalingLogger } from '../common/logger';
-import { RoomService } from './room.service';
-import { MediasoupSignalingService } from './mediasoup-signaling.service';
+import type { RoomService } from './room.service';
+import type { MediasoupSignalingService } from './mediasoup-signaling.service';
 
 /**
  * Extended WebSocket with user metadata
@@ -316,6 +319,18 @@ export class SignalingGateway
 
     // Send room state to joining user
     const roomState = this.roomService.getRoomState(roomId);
+    signalingLogger.info({
+      userId: user.id,
+      roomId,
+      role: user.role,
+      participantCount: roomState.participants.length,
+      otherParticipants: roomState.participants.filter(p => p.user.id !== user.id).map(p => ({
+        id: p.user.id,
+        role: p.user.role,
+        displayName: p.user.displayName
+      }))
+    }, 'Sending room state to newly joined user');
+    
     this.sendToClient(client, {
       type: SignalMessageType.ROOM_STATE,
       payload: roomState,
@@ -323,6 +338,17 @@ export class SignalingGateway
     });
 
     // Notify other participants
+    const otherClientsInRoom = Array.from(this.clients.values()).filter(
+      c => c.roomId === roomId && c.id !== client.id
+    );
+    signalingLogger.info({
+      newUserId: user.id,
+      newUserRole: user.role,
+      roomId,
+      notifyingClients: otherClientsInRoom.length,
+      clientsToNotify: otherClientsInRoom.map(c => ({ id: c.userId, role: c.role }))
+    }, 'Notifying other participants of new join');
+    
     this.broadcastToRoom(roomId, {
       type: SignalMessageType.PARTICIPANT_JOINED,
       payload: { participant },

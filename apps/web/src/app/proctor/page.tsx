@@ -214,8 +214,6 @@ export default function ProctorPage(): JSX.Element {
     // Connect to mediasoup for consuming streams
     connectMediasoup();
 
-    // Simulate events for demo
-    simulateEvents();
 
     return () => {
       disconnect();
@@ -223,36 +221,6 @@ export default function ProctorPage(): JSX.Element {
     };
   }, [userId, roomId, setUser, setRoomId, setSession, setRole, connect, disconnect, connectMediasoup, disconnectMediasoup]);
 
-  /**
-   * Simulate proctoring events for demo
-   */
-  const simulateEvents = useCallback(() => {
-    // Add some initial events
-    const demoEvents: Array<{
-      type: ProctoringEventType;
-      userId: string;
-      severity: ViolationSeverity;
-      delay: number;
-    }> = [
-      { type: ProctoringEventType.SESSION_STARTED, userId: 'system', severity: ViolationSeverity.INFO, delay: 0 },
-      { type: ProctoringEventType.CONNECTION_ESTABLISHED, userId: 'candidate-1', severity: ViolationSeverity.INFO, delay: 500 },
-      { type: ProctoringEventType.CONNECTION_ESTABLISHED, userId: 'candidate-2', severity: ViolationSeverity.INFO, delay: 800 },
-      { type: ProctoringEventType.TAB_SWITCH_DETECTED, userId: 'candidate-2', severity: ViolationSeverity.WARNING, delay: 5000 },
-      { type: ProctoringEventType.WEBCAM_DISABLED, userId: 'candidate-4', severity: ViolationSeverity.CRITICAL, delay: 8000 },
-    ];
-
-    demoEvents.forEach(({ type, userId, severity, delay }) => {
-      setTimeout(() => {
-        addEvent({
-          type,
-          userId,
-          roomId,
-          severity,
-          description: getEventDescription(type, userId),
-        });
-      }, delay);
-    });
-  }, [addEvent, roomId]);
 
   /**
    * Filter events by severity
@@ -905,15 +873,3 @@ function formatLastSeen(timestamp: number): string {
   return new Date(timestamp).toLocaleTimeString();
 }
 
-function getEventDescription(type: ProctoringEventType, userId: string): string {
-  const candidateName = userId === 'system' ? 'System' : `Candidate ${userId.slice(0, 8)}`;
-  
-  const descriptions: Partial<Record<ProctoringEventType, string>> = {
-    [ProctoringEventType.SESSION_STARTED]: 'Exam session has started',
-    [ProctoringEventType.CONNECTION_ESTABLISHED]: `${candidateName} connected`,
-    [ProctoringEventType.TAB_SWITCH_DETECTED]: `${candidateName} switched tabs`,
-    [ProctoringEventType.WEBCAM_DISABLED]: `${candidateName} disabled webcam`,
-  };
-
-  return descriptions[type] || `${candidateName}: ${type}`;
-}
