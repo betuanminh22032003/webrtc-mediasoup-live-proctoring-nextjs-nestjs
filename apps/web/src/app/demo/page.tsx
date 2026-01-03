@@ -65,8 +65,29 @@ export default function DemoPage(): JSX.Element {
   useEffect(() => {
     enumerateDevices()
       .then(setAvailableDevices)
-      .catch((err) => console.error('Failed to enumerate devices:', err));
+      .catch((err) => {
+        console.error('Failed to enumerate devices:', err);
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'Failed to enumerate media devices. Please ensure you are using HTTPS or localhost.'
+        );
+      });
   }, []);
+
+  // Sync webcam stream with video element
+  useEffect(() => {
+    if (webcamRef.current && media.webcam) {
+      webcamRef.current.srcObject = media.webcam;
+    }
+  }, [media.webcam]);
+
+  // Sync screen stream with video element
+  useEffect(() => {
+    if (screenRef.current && media.screen) {
+      screenRef.current.srcObject = media.screen;
+    }
+  }, [media.screen]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -102,10 +123,6 @@ export default function DemoPage(): JSX.Element {
 
       setMedia((prev) => ({ ...prev, webcam: result.stream }));
       setDevices((prev) => ({ ...prev, webcamEnabled: true }));
-
-      if (webcamRef.current) {
-        webcamRef.current.srcObject = result.stream;
-      }
     }
   }, [devices.webcamEnabled, media.webcam]);
 
@@ -134,10 +151,6 @@ export default function DemoPage(): JSX.Element {
 
       setMedia((prev) => ({ ...prev, screen: result.stream }));
       setDevices((prev) => ({ ...prev, screenEnabled: true }));
-
-      if (screenRef.current) {
-        screenRef.current.srcObject = result.stream;
-      }
 
       // Handle user stopping share via browser UI
       result.stream.getVideoTracks()[0].onended = () => {

@@ -116,7 +116,19 @@ export function useSignaling({
   const handleMessage = useCallback(
     (event: MessageEvent) => {
       try {
-        const message = JSON.parse(event.data as string) as SignalingMessage;
+        // Validate data exists and is a string
+        if (!event.data || typeof event.data !== 'string') {
+          console.warn('Invalid message data:', event.data);
+          return;
+        }
+
+        const message = JSON.parse(event.data) as SignalingMessage;
+
+        // Validate message structure
+        if (!message || typeof message !== 'object' || !message.type) {
+          console.warn('Invalid message format:', message);
+          return;
+        }
 
         // Handle pong internally
         if (message.type === SignalMessageType.PONG) {
@@ -130,7 +142,7 @@ export function useSignaling({
         // Forward to handler
         onMessage?.(message);
       } catch (error) {
-        console.error('Failed to parse signaling message:', error);
+        console.error('Failed to parse signaling message:', error, event.data);
       }
     },
     [onMessage]

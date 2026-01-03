@@ -52,6 +52,7 @@ export const ErrorCodes = {
   MEDIA_SCREEN_SHARE_CANCELLED: 'MEDIA_3007',
   MEDIA_WEBCAM_REQUIRED: 'MEDIA_3008',
   MEDIA_SCREEN_REQUIRED: 'MEDIA_3009',
+  MEDIA_NOT_SUPPORTED: 'MEDIA_3010',
 
   // ============================================================================
   // Signaling Errors (4xxx)
@@ -136,6 +137,7 @@ export const ErrorMessages: Record<ErrorCode, string> = {
   [ErrorCodes.MEDIA_SCREEN_SHARE_CANCELLED]: 'Screen sharing was cancelled by user',
   [ErrorCodes.MEDIA_WEBCAM_REQUIRED]: 'Webcam is required for this session',
   [ErrorCodes.MEDIA_SCREEN_REQUIRED]: 'Screen sharing is required for this session',
+  [ErrorCodes.MEDIA_NOT_SUPPORTED]: 'Media API not supported in this browser',
 
   // Signaling
   [ErrorCodes.SIGNAL_CONNECTION_FAILED]: 'Failed to establish signaling connection',

@@ -32,6 +32,11 @@ export interface DeviceList {
  * - We need labels for device selection UI
  */
 export async function enumerateDevices(): Promise<DeviceList> {
+  // Check if mediaDevices API is available
+  if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+    throw new Error('Media devices API not supported in this browser');
+  }
+
   // Request permission to get device labels
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -63,6 +68,13 @@ export async function enumerateDevices(): Promise<DeviceList> {
 export async function getUserMedia(
   constraints: MediaStreamConstraints
 ): Promise<{ stream: MediaStream } | { error: string; code: string }> {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    return {
+      error: 'getUserMedia is not supported in this browser',
+      code: ErrorCodes.MEDIA_NOT_SUPPORTED,
+    };
+  }
+
   try {
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
     return { stream };
@@ -115,6 +127,13 @@ export async function getAudioStream(
 export async function getScreenShareStream(): Promise<
   { stream: MediaStream } | { error: string; code: string }
 > {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+    return {
+      error: 'Screen sharing is not supported in this browser',
+      code: ErrorCodes.MEDIA_NOT_SUPPORTED,
+    };
+  }
+
   try {
     // TypeScript doesn't know about displaySurface yet
     const stream = await navigator.mediaDevices.getDisplayMedia({
