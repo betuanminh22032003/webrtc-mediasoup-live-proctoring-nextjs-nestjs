@@ -62,42 +62,6 @@ interface CandidateData {
   screenStream?: MediaStream;
 }
 
-// Mock candidates for demo purposes
-const MOCK_CANDIDATES: CandidateData[] = [
-  {
-    id: 'candidate-1',
-    displayName: 'John Smith',
-    connectionQuality: 'good',
-    mediaState: { webcamEnabled: true, screenShareEnabled: true, audioEnabled: true },
-    violationCount: 0,
-    lastSeen: Date.now(),
-  },
-  {
-    id: 'candidate-2',
-    displayName: 'Jane Doe',
-    connectionQuality: 'good',
-    mediaState: { webcamEnabled: true, screenShareEnabled: true, audioEnabled: false },
-    violationCount: 2,
-    lastSeen: Date.now(),
-  },
-  {
-    id: 'candidate-3',
-    displayName: 'Bob Wilson',
-    connectionQuality: 'fair',
-    mediaState: { webcamEnabled: true, screenShareEnabled: true, audioEnabled: true },
-    violationCount: 0,
-    lastSeen: Date.now(),
-  },
-  {
-    id: 'candidate-4',
-    displayName: 'Alice Chen',
-    connectionQuality: 'poor',
-    mediaState: { webcamEnabled: false, screenShareEnabled: true, audioEnabled: true },
-    violationCount: 3,
-    lastSeen: Date.now() - 30000,
-  },
-];
-
 // Shared room ID for demo - candidates and proctors should use same room
 const DEMO_ROOM_ID = 'proctoring-demo-room';
 
@@ -163,8 +127,8 @@ export default function ProctorPage(): JSX.Element {
     });
   }, [mediasoupConnected, isDeviceLoaded, remoteStreams, mediasoupError]);
 
-  // Real connected candidates from participants + mock fallback for demo
-  const [candidates, setCandidates] = useState<CandidateData[]>(MOCK_CANDIDATES);
+  // Real connected candidates from participants
+  const [candidates, setCandidates] = useState<CandidateData[]>([]);
 
   // Update candidates when participants change
   useEffect(() => {
@@ -214,9 +178,7 @@ export default function ProctorPage(): JSX.Element {
             screenStream: remoteStream?.screenStream,
           };
         });
-      if (realCandidates.length > 0) {
-        setCandidates(realCandidates);
-      }
+      setCandidates(realCandidates);
     }
   }, [participants, remoteStreams]);
 

@@ -502,12 +502,18 @@ export function useMediasoupClient({
       const message: SignalingMessage = JSON.parse(event.data);
       if (!message || !message.type) return;
 
-      console.log('[WebSocket] Received message:', message.type);
+      console.log('[WebSocket] Received message:', message.type, message);
 
       switch (message.type) {
         case SignalMessageType.RTP_CAPABILITIES: {
-          console.log('[WebSocket] Received RTP_CAPABILITIES, loading device...');
+          console.log('[WebSocket] Received RTP_CAPABILITIES, loading device...', message.payload);
           const { rtpCapabilities } = message.payload as { rtpCapabilities: unknown };
+          
+          if (!rtpCapabilities) {
+            console.error('[WebSocket] RTP capabilities is undefined!');
+            return;
+          }
+          
           loadDevice(rtpCapabilities).then(() => {
             console.log('[WebSocket] Device loaded successfully!');
             // After device loaded, request producers list (for proctors)
@@ -599,6 +605,7 @@ export function useMediasoupClient({
 
         default:
           // Other messages handled by specific listeners
+          console.log('[WebSocket] Unhandled message type:', message.type);
           break;
       }
     } catch (error) {
@@ -626,30 +633,33 @@ export function useMediasoupClient({
         console.log('[WebSocket] Connected successfully');
         setIsConnected(true);
 
-        // Join room
-        console.log('[WebSocket] Sending ROOM_JOIN...');
-        sendMessageNoWait(SignalMessageType.ROOM_JOIN, {
-          roomId,
-          user: {
-            id: userId,
-            role,
-            displayName: displayName || `${role}-${userId.slice(0, 8)}`,
-          },
-        });
-
-        // Request RTP capabilities
+        // Wait a bit for server to setup listeners
         setTimeout(() => {
-          console.log('[WebSocket] Requesting RTP capabilities...');
-          sendMessageNoWait(SignalMessageType.GET_RTP_CAPABILITIES, {});
-          
-          // Retry if no response after 3 seconds
+          // Join room
+          console.log('[WebSocket] Sending ROOM_JOIN...');
+          sendMessageNoWait(SignalMessageType.ROOM_JOIN, {
+            roomId,
+            user: {
+              id: userId,
+              role,
+              displayName: displayName || `${role}-${userId.slice(0, 8)}`,
+            },
+          });
+
+          // Request RTP capabilities after room join
           setTimeout(() => {
-            if (!deviceRef.current) {
-              console.warn('[WebSocket] No device loaded yet, retrying RTP capabilities request...');
-              sendMessageNoWait(SignalMessageType.GET_RTP_CAPABILITIES, {});
-            }
-          }, 3000);
-        }, 500);
+            console.log('[WebSocket] Requesting RTP capabilities...');
+            sendMessageNoWait(SignalMessageType.GET_RTP_CAPABILITIES, {});
+            
+            // Retry if no response after 3 seconds
+            setTimeout(() => {
+              if (!deviceRef.current) {
+                console.warn('[WebSocket] No device loaded yet, retrying RTP capabilities request...');
+                sendMessageNoWait(SignalMessageType.GET_RTP_CAPABILITIES, {});
+              }
+            }, 3000);
+          }, 1000); // Increased delay to 1 second after room join
+        }, 100); // Small delay after connection
       };
 
       ws.onmessage = handleMessage;

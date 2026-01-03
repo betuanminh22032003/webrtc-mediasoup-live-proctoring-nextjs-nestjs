@@ -115,6 +115,11 @@ export class RouterService {
   private async createRouter(roomId: string): Promise<Router> {
     const worker = this.workerManager.getNextWorker();
 
+    if (!worker) {
+      logger.error({ roomId }, 'No worker available to create router');
+      throw new Error('No mediasoup worker available');
+    }
+
     logger.info(
       { roomId, workerPid: worker.pid },
       'Creating router for room',
@@ -176,8 +181,27 @@ export class RouterService {
    * @returns RTP capabilities or undefined if room doesn't exist
    */
   public async getRtpCapabilities(roomId: string): Promise<RtpCapabilities | undefined> {
-    const router = await this.getOrCreateRouter(roomId);
-    return router.rtpCapabilities;
+    logger.debug({ roomId }, 'Getting RTP capabilities for room');
+    
+    try {
+      const router = await this.getOrCreateRouter(roomId);
+      
+      logger.debug({ 
+        roomId, 
+        routerId: router.id,
+        hasCapabilities: !!router.rtpCapabilities,
+        codecsCount: router.rtpCapabilities?.codecs?.length
+      }, 'Got router RTP capabilities');
+      
+      return router.rtpCapabilities;
+    } catch (error) {
+      logger.error({ 
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        roomId 
+      }, 'Failed to get or create router');
+      throw error;
+    }
   }
 
   // ===========================================================================

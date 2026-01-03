@@ -97,7 +97,7 @@ export type AuthRequest = z.infer<typeof AuthRequestSchema>;
 export const RoomJoinSchema = BaseMessageSchema.extend({
   type: z.literal(SignalMessageType.ROOM_JOIN),
   payload: z.object({
-    roomId: z.string().uuid(),
+    roomId: z.string().min(1), // Allow any non-empty string for room ID
     user: UserSchema,
   }),
 });

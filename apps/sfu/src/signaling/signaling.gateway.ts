@@ -118,11 +118,84 @@ export class SignalingGateway
       client.isAlive = true;
     });
 
-    // Handle raw messages (bypass NestJS decorator routing for debugging)
+    // Handle raw messages (bypass NestJS decorator routing)
+    // WHY manual handling? NestJS @SubscribeMessage with raw WebSocket doesn't parse our message format
     client.on('message', (rawData: Buffer | string) => {
       try {
         const message = JSON.parse(rawData.toString());
-        signalingLogger.debug({ clientId: client.id, type: message.type }, 'Raw message received');
+        signalingLogger.info({ 
+          clientId: client.id, 
+          type: message.type,
+          typeOf: typeof message.type,
+          hasPayload: !!message.payload,
+          roomId: client.roomId,
+          userId: client.userId,
+          rawMessage: JSON.stringify(message).substring(0, 200)
+        }, 'Raw message received');
+        
+        // Direct string comparison for debugging
+        if (message.type === 'room.join') {
+          signalingLogger.info({ clientId: client.id }, 'MATCHED room.join by string comparison!');
+          this.handleRoomJoin(message, client);
+          return;
+        }
+        
+        // Route messages manually since decorators don't work with our format
+        switch (message.type) {
+          case SignalMessageType.ROOM_JOIN:
+            signalingLogger.info({ clientId: client.id, payload: message.payload }, 'Manual handling ROOM_JOIN');
+            this.handleRoomJoin(message, client);
+            break;
+            
+          case SignalMessageType.GET_RTP_CAPABILITIES:
+            signalingLogger.info({ clientId: client.id }, 'Manual handling GET_RTP_CAPABILITIES');
+            this.handleGetRtpCapabilities(client);
+            break;
+            
+          case SignalMessageType.CREATE_TRANSPORT:
+            signalingLogger.info({ clientId: client.id }, 'Manual handling CREATE_TRANSPORT');
+            this.handleCreateTransport(message, client);
+            break;
+            
+          case SignalMessageType.CONNECT_TRANSPORT:
+            signalingLogger.info({ clientId: client.id }, 'Manual handling CONNECT_TRANSPORT');
+            this.handleConnectTransport(message, client);
+            break;
+            
+          case SignalMessageType.PRODUCE:
+            signalingLogger.info({ clientId: client.id }, 'Manual handling PRODUCE');
+            this.handleProduce(message, client);
+            break;
+            
+          case SignalMessageType.CONSUME:
+            signalingLogger.info({ clientId: client.id }, 'Manual handling CONSUME');
+            this.handleConsume(message, client);
+            break;
+            
+          case SignalMessageType.CONSUMER_RESUME:
+            signalingLogger.info({ clientId: client.id }, 'Manual handling CONSUMER_RESUME');
+            this.handleConsumerResume(message, client);
+            break;
+            
+          case SignalMessageType.GET_PRODUCERS:
+            signalingLogger.info({ clientId: client.id }, 'Manual handling GET_PRODUCERS');
+            this.handleGetProducers(client);
+            break;
+            
+          case SignalMessageType.PING:
+            this.handlePing(client);
+            break;
+            
+          default:
+            // Let NestJS decorators handle other message types
+            signalingLogger.warn({ 
+              clientId: client.id, 
+              messageType: message.type,
+              expectedRoomJoin: SignalMessageType.ROOM_JOIN,
+              match: message.type === SignalMessageType.ROOM_JOIN
+            }, 'Unhandled message type in switch');
+            break;
+        }
       } catch (error) {
         signalingLogger.error({ error, clientId: client.id }, 'Failed to parse message');
       }
@@ -182,9 +255,21 @@ export class SignalingGateway
     @MessageBody() data: unknown,
     @ConnectedSocket() client: AuthenticatedSocket
   ): void {
+    signalingLogger.info({ 
+      clientId: client.id, 
+      dataType: typeof data,
+      dataKeys: data && typeof data === 'object' ? Object.keys(data) : [],
+      data: JSON.stringify(data).substring(0, 300)
+    }, 'handleRoomJoin called with data');
+    
     const parseResult = RoomJoinSchema.safeParse(data);
 
     if (!parseResult.success) {
+      signalingLogger.error({ 
+        clientId: client.id,
+        errors: parseResult.error.errors,
+        data
+      }, 'Room join validation failed');
       this.sendError(client, 'INVALID_MESSAGE', 'Invalid room join payload');
       return;
     }
@@ -431,7 +516,12 @@ export class SignalingGateway
     try {
       const rtpCapabilities = await this.mediasoupSignaling.getRtpCapabilities(roomId);
 
-      signalingLogger.info({ userId, roomId }, 'Sending RTP capabilities to client');
+      signalingLogger.info({ 
+        userId, 
+        roomId,
+        hasCapabilities: !!rtpCapabilities,
+        codecsCount: rtpCapabilities?.codecs?.length
+      }, 'Sending RTP capabilities to client');
 
       this.sendToClient(client, {
         type: SignalMessageType.RTP_CAPABILITIES,
@@ -441,7 +531,12 @@ export class SignalingGateway
 
       signalingLogger.debug({ userId, roomId }, 'Sent RTP capabilities');
     } catch (error) {
-      signalingLogger.error({ error, userId, roomId }, 'Failed to get RTP capabilities');
+      signalingLogger.error({ 
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        userId, 
+        roomId 
+      }, 'Failed to get RTP capabilities');
       this.sendError(client, 'RTP_CAPABILITIES_FAILED', 'Failed to get RTP capabilities');
     }
   }

@@ -48,6 +48,9 @@ function generateId(): string {
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3001/ws';
 const EXAM_DURATION_MINUTES = 60; // Default exam duration
 
+// Shared room ID for demo - candidates and proctors should use same room
+const DEMO_ROOM_ID = 'proctoring-demo-room';
+
 // ============================================================================
 // Page Component
 // ============================================================================
@@ -60,7 +63,8 @@ export default function CandidatePage(): JSX.Element {
 
   // Generate user ID on mount
   const [userId] = useState(() => generateId());
-  const [roomId] = useState(() => 'proctoring-demo-room');
+  // Use shared room ID so candidate and proctor are in same room
+  const [roomId] = useState(() => DEMO_ROOM_ID);
   // Stores
   const { signalingState, setUser, setRoomId } = useWebRTCStore();
   const { session, setSession, startExam, events, activeAlerts, dismissAlert, setRole } =

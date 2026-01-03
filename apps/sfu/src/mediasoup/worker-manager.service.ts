@@ -95,12 +95,24 @@ export class WorkerManagerService implements OnModuleInit, OnModuleDestroy {
       '🚀 Initializing mediasoup workers...',
     );
 
-    await this.createWorkers();
+    try {
+      await this.createWorkers();
 
-    logger.info(
-      { numWorkers: this.workers.length },
-      '✅ mediasoup workers initialized',
-    );
+      logger.info(
+        { numWorkers: this.workers.length },
+        '✅ mediasoup workers initialized',
+      );
+    } catch (error) {
+      logger.error(
+        { 
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined
+        },
+        '❌ Failed to initialize mediasoup workers',
+      );
+      // Re-throw to prevent server from starting with broken workers
+      throw error;
+    }
   }
 
   /**
@@ -147,38 +159,50 @@ export class WorkerManagerService implements OnModuleInit, OnModuleDestroy {
       this.config.rtcMaxPort,
     );
 
-    logger.debug({ settings: workerSettings }, 'Creating mediasoup worker...');
+    logger.info({ settings: workerSettings }, 'Creating mediasoup worker with settings...');
 
-    const worker = await mediasoup.createWorker(workerSettings);
+    try {
+      const worker = await mediasoup.createWorker(workerSettings);
 
-    // Handle worker death
-    worker.on('died', (error) => {
-      this.handleWorkerDeath(worker, error);
-    });
+      // Handle worker death
+      worker.on('died', (error) => {
+        this.handleWorkerDeath(worker, error);
+      });
 
-    // Optional: Log worker resource usage
-    // worker.observer.on('newrouter', (router) => {
-    //   logger.debug({ routerId: router.id }, 'New router created');
-    // });
+      // Optional: Log worker resource usage
+      // worker.observer.on('newrouter', (router) => {
+      //   logger.debug({ routerId: router.id }, 'New router created');
+      // });
 
-    const workerInfo: WorkerInfo = {
-      worker,
-      routerCount: 0,
-      createdAt: Date.now(),
-      pid: worker.pid,
-    };
-
-    this.workers.push(workerInfo);
-
-    logger.info(
-      {
+      const workerInfo: WorkerInfo = {
+        worker,
+        routerCount: 0,
+        createdAt: Date.now(),
         pid: worker.pid,
-        totalWorkers: this.workers.length,
-      },
-      'Created mediasoup worker',
-    );
+      };
 
-    return workerInfo;
+      this.workers.push(workerInfo);
+
+      logger.info(
+        {
+          pid: worker.pid,
+          totalWorkers: this.workers.length,
+        },
+        '✅ Created mediasoup worker',
+      );
+
+      return workerInfo;
+    } catch (error) {
+      logger.error(
+        {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          settings: workerSettings
+        },
+        '❌ Failed to create mediasoup worker',
+      );
+      throw error;
+    }
   }
 
   /**
@@ -250,6 +274,7 @@ export class WorkerManagerService implements OnModuleInit, OnModuleDestroy {
    */
   public getNextWorker(): Worker {
     if (this.workers.length === 0) {
+      logger.error('No mediasoup workers available! Workers not initialized?');
       throw new Error('No mediasoup workers available');
     }
 
