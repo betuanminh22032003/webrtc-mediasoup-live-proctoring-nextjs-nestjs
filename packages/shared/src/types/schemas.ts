@@ -149,7 +149,7 @@ export type IceCandidate = z.infer<typeof IceCandidateSchema>;
  * Router RTP Capabilities response
  */
 export const RouterRtpCapabilitiesSchema = BaseMessageSchema.extend({
-  type: z.literal(SignalMessageType.ROUTER_RTP_CAPABILITIES),
+  type: z.literal(SignalMessageType.RTP_CAPABILITIES),
   payload: z.object({
     /** mediasoup router RTP capabilities - opaque to client */
     rtpCapabilities: z.record(z.unknown()),

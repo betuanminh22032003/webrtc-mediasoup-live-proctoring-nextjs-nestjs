@@ -146,10 +146,12 @@ export enum ViolationSeverity {
  * - mediasoup requires separate transports for send/receive
  * - Prevents configuration errors
  * - Clear mental model for developers
+ *
+ * NOTE: Using 'recv' (not 'receive') to match mediasoup convention
  */
 export enum TransportDirection {
   SEND = 'send',
-  RECEIVE = 'receive',
+  RECV = 'recv',
 }
 
 /**
@@ -179,13 +181,50 @@ export enum SignalMessageType {
   ICE_CANDIDATE = 'ice.candidate',
 
   // mediasoup signaling (Phase 2+)
-  ROUTER_RTP_CAPABILITIES = 'router.rtp.capabilities',
+  /** Request router RTP capabilities */
+  GET_RTP_CAPABILITIES = 'router.rtp.capabilities.get',
+  /** Response with router RTP capabilities */
+  RTP_CAPABILITIES = 'router.rtp.capabilities',
+  /** Request to create a transport */
   CREATE_TRANSPORT = 'transport.create',
+  /** Response with transport parameters */
+  TRANSPORT_CREATED = 'transport.created',
+  /** Request to connect a transport */
   CONNECT_TRANSPORT = 'transport.connect',
+  /** Response confirming transport connected */
+  TRANSPORT_CONNECTED = 'transport.connected',
+  /** Request to produce media */
   PRODUCE = 'produce',
-  PRODUCE_DONE = 'produce.done',
+  /** Response with producer ID after produce */
+  PRODUCED = 'produce.done',
+  /** Notification of new producer in room */
+  NEW_PRODUCER = 'producer.new',
+  /** Notification of producer closed */
+  PRODUCER_CLOSED = 'producer.closed',
+  /** Request to pause a producer */
+  PRODUCER_PAUSE = 'producer.pause',
+  /** Notification that producer was paused */
+  PRODUCER_PAUSED = 'producer.paused',
+  /** Request to resume a producer */
+  PRODUCER_RESUME = 'producer.resume',
+  /** Notification that producer was resumed */
+  PRODUCER_RESUMED = 'producer.resumed',
+  /** Request to consume a producer */
   CONSUME = 'consume',
+  /** Response with consumer parameters */
+  CONSUMER_CREATED = 'consumer.created',
+  /** Request to resume a consumer */
   CONSUMER_RESUME = 'consumer.resume',
+  /** Response confirming consumer resumed */
+  CONSUMER_RESUMED = 'consumer.resumed',
+  /** Notification that consumer was paused */
+  CONSUMER_PAUSED = 'consumer.paused',
+  /** Notification that consumer was closed */
+  CONSUMER_CLOSED = 'consumer.closed',
+  /** Request list of producers in room */
+  GET_PRODUCERS = 'producers.get',
+  /** Response with list of producers */
+  PRODUCERS_LIST = 'producers.list',
 
   // Media control
   MEDIA_TOGGLE = 'media.toggle',
