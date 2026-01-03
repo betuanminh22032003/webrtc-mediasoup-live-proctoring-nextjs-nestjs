@@ -22,7 +22,7 @@ import {
 } from '@proctoring/shared';
 import type { ProctoringEventType } from '@proctoring/shared';
 import { useMedia } from '@/hooks/useMedia';
-import { useSignaling } from '@/hooks/useSignaling';
+import { useMediasoupClient } from '@/hooks/useMediasoupClient';
 import { useViolationDetection } from '@/hooks/useViolationDetection';
 import { useWebRTCStore } from '@/store/webrtc.store';
 import { useProctoringStore } from '@/store/proctoring.store';
@@ -60,8 +60,7 @@ export default function CandidatePage(): JSX.Element {
 
   // Generate user ID on mount
   const [userId] = useState(() => generateId());
-  const [roomId] = useState(() => 'exam-room-' + Date.now().toString(36));
-
+  const [roomId] = useState(() => 'proctoring-demo-room');
   // Stores
   const { signalingState, setUser, setRoomId } = useWebRTCStore();
   const { session, setSession, startExam, events, activeAlerts, dismissAlert, setRole } =
@@ -78,8 +77,20 @@ export default function CandidatePage(): JSX.Element {
     stopAllMedia,
   } = useMedia();
 
-  const { isConnected, connect, disconnect, send, lastError } = useSignaling({
+  const {
+    isConnected,
+    isDeviceLoaded,
+    connect,
+    disconnect,
+    produceWebcam,
+    produceScreen,
+    lastError,
+  } = useMediasoupClient({
     url: WS_URL,
+    roomId,
+    userId,
+    displayName: `Candidate ${userId.slice(0, 8)}`,
+    role: 'candidate',
     autoConnect: false,
   });
 
@@ -115,12 +126,14 @@ export default function CandidatePage(): JSX.Element {
       status: 'waiting',
     });
 
+    // Cleanup only on unmount - not on re-renders
     return () => {
-      stopAllMedia();
+      // Only disconnect and stop monitoring, don't stop media here
+      // as it can cause the streams to stop prematurely
       disconnect();
       stopMonitoring();
     };
-  }, [userId, roomId, setUser, setRoomId, setSession, setRole, stopAllMedia, disconnect, stopMonitoring]);
+  }, [disconnect, stopMonitoring]);
 
   /**
    * Run setup: Enable webcam and screen share
@@ -142,18 +155,30 @@ export default function CandidatePage(): JSX.Element {
       return;
     }
 
-    // Connect to server
-    connect();
-
     setSetupComplete(true);
-  }, [startWebcam, startScreenShare, connect]);
+  }, [startWebcam, startScreenShare]);
+
+  /**
+   * Connect to server after setup
+   */
+  useEffect(() => {
+    if (setupComplete && !isConnected) {
+      connect();
+    }
+  }, [setupComplete, isConnected, connect]);
 
   /**
    * Start the exam
    */
-  const handleStartExam = useCallback(() => {
+  const handleStartExam = useCallback(async () => {
     if (!setupComplete || !webcamEnabled || !screenEnabled) {
       setSetupError('Please complete setup first');
+      return;
+    }
+
+    if (!isConnected || !isDeviceLoaded) {
+      setSetupError('Waiting for connection and device initialization...');
+      console.log('Connection status:', { isConnected, isDeviceLoaded });
       return;
     }
 
@@ -161,9 +186,23 @@ export default function CandidatePage(): JSX.Element {
     startExam();
     startMonitoring();
 
-    // Notify server
-    send('ROOM_JOIN' as unknown as never, { roomId, role: UserRole.CANDIDATE });
-  }, [setupComplete, webcamEnabled, screenEnabled, startExam, startMonitoring, send, roomId]);
+    // Wait a bit for everything to settle
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Produce webcam stream
+    if (localWebcam) {
+      console.log('Producing webcam stream...');
+      const producerId = await produceWebcam(localWebcam);
+      console.log('Webcam producer ID:', producerId);
+    }
+
+    // Produce screen stream
+    if (localScreen) {
+      console.log('Producing screen stream...');
+      const producerId = await produceScreen(localScreen);
+      console.log('Screen producer ID:', producerId);
+    }
+  }, [setupComplete, webcamEnabled, screenEnabled, startExam, startMonitoring, localWebcam, localScreen, produceWebcam, produceScreen, isConnected, isDeviceLoaded]);
 
   /**
    * End the exam
@@ -174,10 +213,11 @@ export default function CandidatePage(): JSX.Element {
     }
 
     stopMonitoring();
+    stopAllMedia(); // Now stop media when user intentionally ends
     setExamStarted(false);
     disconnect();
     router.push('/');
-  }, [stopMonitoring, disconnect, router]);
+  }, [stopMonitoring, stopAllMedia, disconnect, router]);
 
   /**
    * Calculate remaining time
@@ -241,6 +281,7 @@ export default function CandidatePage(): JSX.Element {
               setupComplete={setupComplete}
               setupError={setupError}
               isConnected={isConnected}
+              isDeviceLoaded={isDeviceLoaded}
               connectionError={lastError}
               onRunSetup={runSetup}
               onStartExam={handleStartExam}
@@ -307,6 +348,7 @@ interface SetupPanelProps {
   setupComplete: boolean;
   setupError: string | null;
   isConnected: boolean;
+  isDeviceLoaded: boolean;
   connectionError: string | null;
   onRunSetup: () => void;
   onStartExam: () => void;
@@ -319,6 +361,7 @@ function SetupPanel({
   setupComplete,
   setupError,
   isConnected,
+  isDeviceLoaded,
   connectionError,
   onRunSetup,
   onStartExam,
@@ -365,7 +408,21 @@ function SetupPanel({
           <SetupItem label="Webcam enabled" checked={webcamEnabled} />
           <SetupItem label="Screen sharing enabled" checked={screenEnabled} />
           <SetupItem label="Connected to server" checked={isConnected} />
+          <SetupItem 
+            label="Device initialized" 
+            checked={isDeviceLoaded}
+            loading={isConnected && !isDeviceLoaded}
+          />
         </ul>
+        
+        {/* Status message */}
+        {isConnected && !isDeviceLoaded && (
+          <div className="mt-4 p-3 bg-blue-900/30 border border-blue-700/50 rounded-lg">
+            <p className="text-sm text-blue-200">
+              ⏳ Initializing media device... This may take a few seconds.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Error Display */}
@@ -387,7 +444,7 @@ function SetupPanel({
         ) : (
           <button
             onClick={onStartExam}
-            disabled={!webcamEnabled || !screenEnabled || !isConnected}
+            disabled={!webcamEnabled || !screenEnabled || !isConnected || !isDeviceLoaded}
             className="flex-1 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-lg font-semibold"
           >
             Begin Exam
@@ -410,17 +467,27 @@ function SetupPanel({
   );
 }
 
-function SetupItem({ label, checked }: { label: string; checked: boolean }): JSX.Element {
+function SetupItem({ 
+  label, 
+  checked,
+  loading = false
+}: { 
+  label: string; 
+  checked: boolean;
+  loading?: boolean;
+}): JSX.Element {
   return (
     <li className="flex items-center gap-3">
       <div
         className={`w-6 h-6 rounded-full flex items-center justify-center ${
-          checked ? 'bg-green-600' : 'bg-gray-700'
+          checked ? 'bg-green-600' : loading ? 'bg-blue-600 animate-pulse' : 'bg-gray-700'
         }`}
       >
-        {checked ? '✓' : '○'}
+        {checked ? '✓' : loading ? '⋯' : '○'}
       </div>
-      <span className={checked ? 'text-white' : 'text-gray-500'}>{label}</span>
+      <span className={checked ? 'text-white' : loading ? 'text-blue-300' : 'text-gray-500'}>
+        {label}
+      </span>
     </li>
   );
 }

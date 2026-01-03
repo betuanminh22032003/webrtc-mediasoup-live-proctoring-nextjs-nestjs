@@ -19,9 +19,11 @@ import {
   UserRole,
   ProctoringEventType,
   ViolationSeverity,
+  MediaTrackType,
 } from '@proctoring/shared';
 import type { ProctoringEvent, MediaState } from '@proctoring/shared';
 import { useSignaling } from '@/hooks/useSignaling';
+import { useMediasoupClient } from '@/hooks/useMediasoupClient';
 import { useWebRTCStore } from '@/store/webrtc.store';
 import { useProctoringStore } from '@/store/proctoring.store';
 
@@ -56,7 +58,8 @@ interface CandidateData {
   mediaState: MediaState;
   violationCount: number;
   lastSeen: number;
-  stream?: MediaStream;
+  webcamStream?: MediaStream;
+  screenStream?: MediaStream;
 }
 
 // Mock candidates for demo purposes
@@ -95,6 +98,9 @@ const MOCK_CANDIDATES: CandidateData[] = [
   },
 ];
 
+// Shared room ID for demo - candidates and proctors should use same room
+const DEMO_ROOM_ID = 'proctoring-demo-room';
+
 // ============================================================================
 // Page Component
 // ============================================================================
@@ -108,10 +114,11 @@ export default function ProctorPage(): JSX.Element {
 
   // Generate user ID on mount
   const [userId] = useState(() => generateId());
-  const [roomId] = useState(() => 'exam-room-' + Date.now().toString(36));
+  // Use shared room ID so proctor and candidates are in same room
+  const [roomId] = useState(() => DEMO_ROOM_ID);
 
   // Stores
-  const { signalingState, setUser, setRoomId } = useWebRTCStore();
+  const { signalingState, setUser, setRoomId, participants } = useWebRTCStore();
   const {
     events,
     addEvent,
@@ -129,8 +136,94 @@ export default function ProctorPage(): JSX.Element {
     autoConnect: false,
   });
 
-  // Use mock candidates for demo
-  const [candidates] = useState<CandidateData[]>(MOCK_CANDIDATES);
+  // mediasoup client for consuming candidate streams
+  const {
+    isConnected: mediasoupConnected,
+    isDeviceLoaded,
+    remoteStreams,
+    connect: connectMediasoup,
+    disconnect: disconnectMediasoup,
+    lastError: mediasoupError,
+  } = useMediasoupClient({
+    url: WS_URL,
+    roomId,
+    userId,
+    displayName: `Proctor ${userId.slice(0, 8)}`,
+    role: 'proctor',
+    autoConnect: false,
+  });
+
+  // Debug logging
+  useEffect(() => {
+    console.log('Mediasoup status:', {
+      connected: mediasoupConnected,
+      deviceLoaded: isDeviceLoaded,
+      streamCount: remoteStreams.size,
+      error: mediasoupError,
+    });
+  }, [mediasoupConnected, isDeviceLoaded, remoteStreams, mediasoupError]);
+
+  // Real connected candidates from participants + mock fallback for demo
+  const [candidates, setCandidates] = useState<CandidateData[]>(MOCK_CANDIDATES);
+
+  // Update candidates when participants change
+  useEffect(() => {
+    const participantArray = Array.from(participants.values());
+    if (participantArray.length > 0) {
+      // Use real participants
+      const realCandidates: CandidateData[] = participantArray
+        .filter(p => p.user.role === UserRole.CANDIDATE)
+        .map(p => {
+          // Determine connection quality from connectionState
+          const qualityFromState = (): 'good' | 'fair' | 'poor' | 'disconnected' => {
+            switch (p.connectionState) {
+              case ConnectionState.CONNECTED:
+                return 'good';
+              case ConnectionState.CONNECTING:
+              case ConnectionState.RECONNECTING:
+                return 'fair';
+              case ConnectionState.DISCONNECTED:
+                return 'disconnected';
+              case ConnectionState.FAILED:
+                return 'poor';
+              default:
+                return 'good';
+            }
+          };
+
+          // Determine media state from activeTracks
+          const hasWebcam = p.activeTracks.includes(MediaTrackType.WEBCAM);
+          const hasScreen = p.activeTracks.includes(MediaTrackType.SCREEN);
+          const hasAudio = p.activeTracks.includes(MediaTrackType.AUDIO);
+
+          // Get streams from remoteStreams map
+          const remoteStream = remoteStreams.get(p.user.id);
+
+          return {
+            id: p.user.id,
+            displayName: p.user.displayName || `Candidate ${p.user.id.slice(0, 8)}`,
+            connectionQuality: qualityFromState(),
+            mediaState: {
+              webcamEnabled: hasWebcam,
+              screenShareEnabled: hasScreen,
+              audioEnabled: hasAudio,
+            },
+            violationCount: 0,
+            lastSeen: p.joinedAt,
+            webcamStream: remoteStream?.webcamStream,
+            screenStream: remoteStream?.screenStream,
+          };
+        });
+      if (realCandidates.length > 0) {
+        setCandidates(realCandidates);
+      }
+    }
+  }, [participants, remoteStreams]);
+
+  // Get connected clients count
+  const connectedClientsCount = useMemo(() => {
+    return Array.from(participants.values()).filter(p => p.user.role === UserRole.CANDIDATE).length;
+  }, [participants]);
 
   /**
    * Initialize user and session
@@ -153,16 +246,20 @@ export default function ProctorPage(): JSX.Element {
       status: 'active',
     });
 
-    // Connect to server
+    // Connect to signaling server
     connect();
+    
+    // Connect to mediasoup for consuming streams
+    connectMediasoup();
 
     // Simulate events for demo
     simulateEvents();
 
     return () => {
       disconnect();
+      disconnectMediasoup();
     };
-  }, [userId, roomId, setUser, setRoomId, setSession, setRole, connect, disconnect]);
+  }, [userId, roomId, setUser, setRoomId, setSession, setRole, connect, disconnect, connectMediasoup, disconnectMediasoup]);
 
   /**
    * Simulate proctoring events for demo
@@ -210,8 +307,9 @@ export default function ProctorPage(): JSX.Element {
     const connected = candidates.filter((c) => c.connectionQuality !== 'disconnected').length;
     const totalViolations = candidates.reduce((sum, c) => sum + c.violationCount, 0);
     const webcamIssues = candidates.filter((c) => !c.mediaState.webcamEnabled).length;
-    return { total: candidates.length, connected, totalViolations, webcamIssues };
-  }, [candidates]);
+    const realConnected = connectedClientsCount > 0 ? connectedClientsCount : connected;
+    return { total: candidates.length, connected: realConnected, totalViolations, webcamIssues };
+  }, [candidates, connectedClientsCount]);
 
   /**
    * Handle candidate selection
@@ -245,6 +343,9 @@ export default function ProctorPage(): JSX.Element {
           <div className="flex items-center gap-4">
             <h1 className="text-xl font-bold">👁️ Proctor Dashboard</h1>
             <ConnectionStatusBadge state={signalingState} />
+            <div className="px-3 py-1 bg-blue-900 rounded text-sm">
+              🔗 {connectedClientsCount} client{connectedClientsCount !== 1 ? 's' : ''} connected
+            </div>
           </div>
           <div className="flex items-center gap-4">
             {/* Stats */}
@@ -453,14 +554,14 @@ function CandidateCard({
     >
       {/* Video Area */}
       <div className="aspect-video bg-gray-800 relative">
-        {candidate.stream ? (
+        {candidate.webcamStream ? (
           <video
             autoPlay
             playsInline
             muted
             ref={(video) => {
-              if (video && video.srcObject !== candidate.stream) {
-                video.srcObject = candidate.stream!;
+              if (video && video.srcObject !== candidate.webcamStream) {
+                video.srcObject = candidate.webcamStream!;
               }
             }}
             className="w-full h-full object-cover"
@@ -662,14 +763,14 @@ function CandidateDetailModal({
           <div>
             <h3 className="font-semibold mb-2">📷 Webcam Feed</h3>
             <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center">
-              {candidate.stream ? (
+              {candidate.webcamStream ? (
                 <video
                   autoPlay
                   playsInline
                   muted
                   ref={(video) => {
-                    if (video && video.srcObject !== candidate.stream) {
-                      video.srcObject = candidate.stream!;
+                    if (video && video.srcObject !== candidate.webcamStream) {
+                      video.srcObject = candidate.webcamStream!;
                     }
                   }}
                   className="w-full h-full object-cover rounded-lg"
@@ -686,9 +787,23 @@ function CandidateDetailModal({
           <div>
             <h3 className="font-semibold mb-2">🖥️ Screen Share</h3>
             <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center">
-              <span className="text-gray-500">
-                {candidate.mediaState.screenShareEnabled ? 'Screen share active' : '🖥️ Screen Share Disabled'}
-              </span>
+              {candidate.screenStream ? (
+                <video
+                  autoPlay
+                  playsInline
+                  muted
+                  ref={(video) => {
+                    if (video && video.srcObject !== candidate.screenStream) {
+                      video.srcObject = candidate.screenStream!;
+                    }
+                  }}
+                  className="w-full h-full object-contain rounded-lg"
+                />
+              ) : (
+                <span className="text-gray-500">
+                  {candidate.mediaState.screenShareEnabled ? 'Connecting...' : '🖥️ Screen Share Disabled'}
+                </span>
+              )}
             </div>
           </div>
         </div>

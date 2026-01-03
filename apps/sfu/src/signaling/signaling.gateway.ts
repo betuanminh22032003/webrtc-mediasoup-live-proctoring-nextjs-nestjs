@@ -118,6 +118,16 @@ export class SignalingGateway
       client.isAlive = true;
     });
 
+    // Handle raw messages (bypass NestJS decorator routing for debugging)
+    client.on('message', (rawData: Buffer | string) => {
+      try {
+        const message = JSON.parse(rawData.toString());
+        signalingLogger.debug({ clientId: client.id, type: message.type }, 'Raw message received');
+      } catch (error) {
+        signalingLogger.error({ error, clientId: client.id }, 'Failed to parse message');
+      }
+    });
+
     this.clients.set(client.id, client);
 
     signalingLogger.info(
@@ -410,13 +420,18 @@ export class SignalingGateway
   ): Promise<void> {
     const { userId, roomId } = client;
 
+    signalingLogger.info({ userId, roomId }, 'Received GET_RTP_CAPABILITIES request');
+
     if (!roomId || !userId) {
+      signalingLogger.warn({ userId, roomId }, 'GET_RTP_CAPABILITIES: Not in room');
       this.sendError(client, 'NOT_IN_ROOM', 'Must join a room first');
       return;
     }
 
     try {
       const rtpCapabilities = await this.mediasoupSignaling.getRtpCapabilities(roomId);
+
+      signalingLogger.info({ userId, roomId }, 'Sending RTP capabilities to client');
 
       this.sendToClient(client, {
         type: SignalMessageType.RTP_CAPABILITIES,
