@@ -507,6 +507,13 @@ export function useMediasoupClient({
       const trackType = consumerParams.appData?.trackType as string | undefined;
       console.log('[WebSocket] Consumer appData:', consumerParams.appData, 'trackType:', trackType);
 
+      // Check consumer state
+      console.log('[WebSocket] Consumer state:', {
+        consumerId: consumer.id,
+        paused: consumer.paused,
+        closed: consumer.closed,
+      });
+
       // Log consumer track details
       console.log('[WebSocket] Consumer track details:', {
         id: consumer.track.id,
@@ -515,6 +522,17 @@ export function useMediasoupClient({
         enabled: consumer.track.enabled,
         muted: consumer.track.muted,
         readyState: consumer.track.readyState,
+      });
+
+      // Add event listeners to track to monitor its state
+      consumer.track.addEventListener('ended', () => {
+        console.warn('[Track] Track ended:', consumer.track.id);
+      });
+      consumer.track.addEventListener('mute', () => {
+        console.warn('[Track] Track muted:', consumer.track.id);
+      });
+      consumer.track.addEventListener('unmute', () => {
+        console.log('[Track] Track unmuted:', consumer.track.id);
       });
 
       // Create MediaStream from consumer track
@@ -554,9 +572,23 @@ export function useMediasoupClient({
       addRemoteStream(producerPeerId, stream);
 
       // Resume consumer
+      console.log('[WebSocket] Resuming consumer:', consumer.id, 'currently paused:', consumer.paused);
       sendMessageNoWait(SignalMessageType.CONSUMER_RESUME, {
         consumerId: consumer.id,
       });
+
+      // Wait a bit and check if consumer is still paused
+      setTimeout(() => {
+        console.log('[WebSocket] Consumer state after resume request:', {
+          consumerId: consumer.id,
+          paused: consumer.paused,
+          track: {
+            enabled: consumer.track.enabled,
+            muted: consumer.track.muted,
+            readyState: consumer.track.readyState,
+          },
+        });
+      }, 500);
 
       console.log(`Consumer created for producer ${producerId} from peer ${producerPeerId}:`, consumer.id);
     } catch (error) {
