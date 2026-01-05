@@ -91,10 +91,11 @@ export function getNumWorkers(configuredWorkers?: number): number {
  */
 export const ROUTER_MEDIA_CODECS: RtpCodecCapability[] = [
   // Audio: Opus (MUST be first audio codec for priority)
+  // NOTE: Do NOT set preferredPayloadType - let mediasoup auto-assign to avoid
+  // conflicts with RTX payload types
   {
     kind: 'audio',
     mimeType: 'audio/opus',
-    preferredPayloadType: 100,
     clockRate: 48000,
     channels: 2,
     // Opus specific parameters
@@ -109,7 +110,6 @@ export const ROUTER_MEDIA_CODECS: RtpCodecCapability[] = [
   {
     kind: 'video',
     mimeType: 'video/VP8',
-    preferredPayloadType: 101,
     clockRate: 90000,
     parameters: {
       'x-google-start-bitrate': 1000, // Initial bitrate hint (kbps)
@@ -120,7 +120,6 @@ export const ROUTER_MEDIA_CODECS: RtpCodecCapability[] = [
   {
     kind: 'video',
     mimeType: 'video/VP9',
-    preferredPayloadType: 102,
     clockRate: 90000,
     parameters: {
       'profile-id': 2, // Profile 2: Better for screen content
@@ -132,7 +131,6 @@ export const ROUTER_MEDIA_CODECS: RtpCodecCapability[] = [
   {
     kind: 'video',
     mimeType: 'video/H264',
-    preferredPayloadType: 103,
     clockRate: 90000,
     parameters: {
       'packetization-mode': 1,
@@ -146,7 +144,6 @@ export const ROUTER_MEDIA_CODECS: RtpCodecCapability[] = [
   {
     kind: 'video',
     mimeType: 'video/H264',
-    preferredPayloadType: 104,
     clockRate: 90000,
     parameters: {
       'packetization-mode': 1,

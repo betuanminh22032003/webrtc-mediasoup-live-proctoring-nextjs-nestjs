@@ -47,8 +47,8 @@ import {
 import type { UserRole } from '@proctoring/shared';
 import type { TransportDirectionType } from '../mediasoup/types';
 import { signalingLogger } from '../common/logger';
-import type { RoomService } from './room.service';
-import type { MediasoupSignalingService } from './mediasoup-signaling.service';
+import { RoomService } from './room.service';
+import { MediasoupSignalingService } from './mediasoup-signaling.service';
 
 /**
  * Extended WebSocket with user metadata
@@ -531,15 +531,20 @@ export class SignalingGateway
   ): Promise<void> {
     const { userId, roomId } = client;
 
+    console.log('=== GET_RTP_CAPABILITIES CALLED ===');
+    console.log('userId:', userId);
+    console.log('roomId:', roomId);
     signalingLogger.info({ userId, roomId }, 'Received GET_RTP_CAPABILITIES request');
 
     if (!roomId || !userId) {
+      console.log('ERROR: Not in room - userId:', userId, 'roomId:', roomId);
       signalingLogger.warn({ userId, roomId }, 'GET_RTP_CAPABILITIES: Not in room');
       this.sendError(client, 'NOT_IN_ROOM', 'Must join a room first');
       return;
     }
 
     try {
+      console.log('Calling mediasoupSignaling.getRtpCapabilities for roomId:', roomId);
       const rtpCapabilities = await this.mediasoupSignaling.getRtpCapabilities(roomId);
 
       signalingLogger.info({ 
@@ -555,8 +560,13 @@ export class SignalingGateway
         timestamp: Date.now(),
       });
 
+      console.log('Successfully got RTP capabilities, codecs:', rtpCapabilities?.codecs?.length);
       signalingLogger.debug({ userId, roomId }, 'Sent RTP capabilities');
     } catch (error) {
+      console.log('=== ERROR IN GET_RTP_CAPABILITIES ===');
+      console.log('Error:', error);
+      console.log('Error message:', error instanceof Error ? error.message : String(error));
+      console.log('Error stack:', error instanceof Error ? error.stack : undefined);
       signalingLogger.error({ 
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
