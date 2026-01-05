@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type * as mediasoupTypes from 'mediasoup-client';
 import { SignalMessageType } from '@proctoring/shared';
+import type { Participant } from '@proctoring/shared';
 import { useWebRTCStore } from '@/store/webrtc.store';
 
 // Type aliases
@@ -112,7 +113,7 @@ export function useMediasoupClient({
   const rtpCapabilitiesRef = useRef<unknown>(null);
 
   // Store actions
-  const { addRemoteStream, removeRemoteStream } = useWebRTCStore();
+  const { addRemoteStream, removeRemoteStream, setParticipants, addParticipant, removeParticipant } = useWebRTCStore();
 
   /**
    * Send message and wait for response (request-response pattern)
@@ -346,7 +347,7 @@ export function useMediasoupClient({
           { maxBitrate: 500000, scaleResolutionDownBy: 2 },
           { maxBitrate: 1000000, scaleResolutionDownBy: 1 },
         ],
-        appData: { mediaType: 'webcam', peerId: userId },
+        appData: { trackType: 'webcam', peerId: userId },
       });
 
       producersRef.current.set(producer.id, producer);
@@ -385,7 +386,7 @@ export function useMediasoupClient({
         encodings: [
           { maxBitrate: 1500000 }, // Higher bitrate for screen sharing
         ],
-        appData: { mediaType: 'screen', peerId: userId },
+        appData: { trackType: 'screen', peerId: userId },
       });
 
       producersRef.current.set(producer.id, producer);
@@ -457,8 +458,9 @@ export function useMediasoupClient({
 
       consumersRef.current.set(consumer.id, consumer);
 
-      // Get the media type from appData
-      const mediaType = consumerParams.appData?.mediaType as string | undefined;
+      // Get the track type from appData (server sends 'trackType' not 'mediaType')
+      const trackType = consumerParams.appData?.trackType as string | undefined;
+      console.log('[WebSocket] Consumer appData:', consumerParams.appData, 'trackType:', trackType);
 
       // Create MediaStream from consumer track
       const stream = new MediaStream([consumer.track]);
@@ -468,17 +470,23 @@ export function useMediasoupClient({
         const newMap = new Map(prev);
         const existing = newMap.get(producerPeerId) || { peerId: producerPeerId };
 
+        console.log('[WebSocket] Updating remote streams for peer:', producerPeerId, 'kind:', consumer.kind, 'trackType:', trackType);
+
         if (consumer.kind === 'video') {
-          if (mediaType === 'screen') {
+          if (trackType === 'screen') {
             existing.screenStream = stream;
+            console.log('[WebSocket] Set screenStream for peer:', producerPeerId);
           } else {
             existing.webcamStream = stream;
+            console.log('[WebSocket] Set webcamStream for peer:', producerPeerId);
           }
         } else if (consumer.kind === 'audio') {
           existing.audioStream = stream;
+          console.log('[WebSocket] Set audioStream for peer:', producerPeerId);
         }
 
         newMap.set(producerPeerId, existing);
+        console.log('[WebSocket] remoteStreams map size:', newMap.size, 'peers:', Array.from(newMap.keys()));
         return newMap;
       });
 
@@ -512,17 +520,27 @@ export function useMediasoupClient({
       switch (message.type) {
         case SignalMessageType.ROOM_STATE: {
           console.log('[WebSocket] Received ROOM_STATE:', message.payload);
-          const roomState = message.payload as { participants: Array<{ user: { id: string; role: string; displayName: string } }> };
+          const roomState = message.payload as { 
+            participants: Participant[];
+          };
           console.log('[WebSocket] Room participants:', roomState.participants?.map(p => ({
             id: p.user.id,
             role: p.user.role,
             name: p.user.displayName
           })));
+          // Update store with participants
+          if (roomState.participants) {
+            setParticipants(roomState.participants);
+          }
           break;
         }
 
         case SignalMessageType.PARTICIPANT_JOINED: {
           console.log('[WebSocket] New participant joined:', message.payload);
+          const { participant } = message.payload as { participant: Participant };
+          if (participant) {
+            addParticipant(participant);
+          }
           break;
         }
 
@@ -610,6 +628,8 @@ export function useMediasoupClient({
             return newMap;
           });
           removeRemoteStream(leftUserId);
+          // Remove from participants
+          removeParticipant(leftUserId);
           break;
         }
 
@@ -632,7 +652,7 @@ export function useMediasoupClient({
     } catch (error) {
       console.error('Failed to parse message:', error);
     }
-  }, [loadDevice, sendMessageNoWait, role, consumeProducer, removeRemoteStream]);
+  }, [loadDevice, sendMessageNoWait, role, consumeProducer, removeRemoteStream, setParticipants, addParticipant, removeParticipant]);
 
   /**
    * Connect to signaling server
