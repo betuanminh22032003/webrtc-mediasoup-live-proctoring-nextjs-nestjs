@@ -96,6 +96,10 @@ export function useMediasoupClient({
   const recvTransportRef = useRef<Transport | null>(null);
   const producersRef = useRef<Map<string, Producer>>(new Map());
   const consumersRef = useRef<Map<string, Consumer>>(new Map());
+  
+  // Transport creation locks to prevent race conditions
+  const sendTransportCreatingRef = useRef<Promise<Transport | null> | null>(null);
+  const recvTransportCreatingRef = useRef<Promise<Transport | null> | null>(null);
 
   // Pending requests for async signaling
   const pendingRequestsRef = useRef<Map<string, {
@@ -196,15 +200,25 @@ export function useMediasoupClient({
   }, []);
 
   /**
-   * Create WebRTC transport (send or receive)
+   * Create WebRTC transport (send or receive) with lock to prevent race conditions
    */
-  const createTransport = useCallback(async (direction: 'send' | 'recv'): Promise<Transport | null> => {
+  const createTransportInternal = useCallback(async (direction: 'send' | 'recv'): Promise<Transport | null> => {
     if (!deviceRef.current) {
       console.error('Device not loaded');
       return null;
     }
 
+    // Check if transport already exists
+    if (direction === 'send' && sendTransportRef.current) {
+      return sendTransportRef.current;
+    }
+    if (direction === 'recv' && recvTransportRef.current) {
+      return recvTransportRef.current;
+    }
+
     try {
+      console.log(`[Transport] Creating ${direction} transport...`);
+      
       // Request transport creation from server
       sendMessageNoWait(SignalMessageType.CREATE_TRANSPORT, { direction });
 
@@ -311,7 +325,7 @@ export function useMediasoupClient({
         recvTransportRef.current = transport;
       }
 
-      console.log(`${direction} transport created:`, transport.id);
+      console.log(`[Transport] ${direction} transport created:`, transport.id);
       return transport;
     } catch (error) {
       console.error(`Failed to create ${direction} transport:`, error);
@@ -319,6 +333,37 @@ export function useMediasoupClient({
       return null;
     }
   }, [sendMessageNoWait]);
+
+  /**
+   * Create transport with lock to prevent race conditions
+   */
+  const createTransport = useCallback(async (direction: 'send' | 'recv'): Promise<Transport | null> => {
+    // Check if transport already exists
+    if (direction === 'send' && sendTransportRef.current) {
+      return sendTransportRef.current;
+    }
+    if (direction === 'recv' && recvTransportRef.current) {
+      return recvTransportRef.current;
+    }
+
+    // Check if already creating
+    const creatingRef = direction === 'send' ? sendTransportCreatingRef : recvTransportCreatingRef;
+    if (creatingRef.current) {
+      console.log(`[Transport] Waiting for existing ${direction} transport creation...`);
+      return creatingRef.current;
+    }
+
+    // Create with lock
+    const promise = createTransportInternal(direction);
+    creatingRef.current = promise;
+    
+    try {
+      const result = await promise;
+      return result;
+    } finally {
+      creatingRef.current = null;
+    }
+  }, [createTransportInternal]);
 
   /**
    * Produce webcam stream
@@ -570,10 +615,12 @@ export function useMediasoupClient({
           const { producers } = message.payload as { producers: ProducerInfo[] };
           console.log('Got producers list:', producers);
 
-          // Consume each producer
-          producers.forEach((producer) => {
-            consumeProducer(producer.producerId, producer.producerPeerId);
-          });
+          // Consume each producer sequentially to avoid race conditions
+          (async () => {
+            for (const producer of producers) {
+              await consumeProducer(producer.producerId, producer.producerPeerId);
+            }
+          })();
           break;
         }
 

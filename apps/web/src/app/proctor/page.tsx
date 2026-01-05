@@ -123,6 +123,13 @@ export default function ProctorPage(): JSX.Element {
       connected: mediasoupConnected,
       deviceLoaded: isDeviceLoaded,
       streamCount: remoteStreams.size,
+      remoteStreamKeys: Array.from(remoteStreams.keys()),
+      remoteStreamDetails: Array.from(remoteStreams.entries()).map(([k, v]) => ({
+        peerId: k,
+        hasWebcam: !!v.webcamStream,
+        hasScreen: !!v.screenStream,
+        hasAudio: !!v.audioStream,
+      })),
       error: mediasoupError,
     });
   }, [mediasoupConnected, isDeviceLoaded, remoteStreams, mediasoupError]);
@@ -133,6 +140,12 @@ export default function ProctorPage(): JSX.Element {
   // Update candidates when participants change
   useEffect(() => {
     const participantArray = Array.from(participants.values());
+    console.log('Participants updated:', {
+      count: participantArray.length,
+      participantIds: participantArray.map(p => p.user.id),
+      remoteStreamKeys: Array.from(remoteStreams.keys()),
+    });
+    
     if (participantArray.length > 0) {
       // Use real participants
       const realCandidates: CandidateData[] = participantArray
@@ -162,14 +175,20 @@ export default function ProctorPage(): JSX.Element {
 
           // Get streams from remoteStreams map
           const remoteStream = remoteStreams.get(p.user.id);
+          console.log('Candidate stream lookup:', {
+            participantId: p.user.id,
+            foundStream: !!remoteStream,
+            hasWebcam: !!remoteStream?.webcamStream,
+            hasScreen: !!remoteStream?.screenStream,
+          });
 
           return {
             id: p.user.id,
             displayName: p.user.displayName || `Candidate ${p.user.id.slice(0, 8)}`,
             connectionQuality: qualityFromState(),
             mediaState: {
-              webcamEnabled: hasWebcam,
-              screenShareEnabled: hasScreen,
+              webcamEnabled: hasWebcam || !!remoteStream?.webcamStream,
+              screenShareEnabled: hasScreen || !!remoteStream?.screenStream,
               audioEnabled: hasAudio,
             },
             violationCount: 0,
@@ -700,6 +719,7 @@ function CandidateDetailModal({
                   muted
                   ref={(video) => {
                     if (video && video.srcObject !== candidate.webcamStream) {
+                      console.log('[Video] Setting webcam srcObject for', candidate.id);
                       video.srcObject = candidate.webcamStream!;
                     }
                   }}
@@ -724,6 +744,7 @@ function CandidateDetailModal({
                   muted
                   ref={(video) => {
                     if (video && video.srcObject !== candidate.screenStream) {
+                      console.log('[Video] Setting screen srcObject for', candidate.id);
                       video.srcObject = candidate.screenStream!;
                     }
                   }}
