@@ -362,6 +362,7 @@ export default function ProctorPage(): JSX.Element {
       {selectedCandidate && (
         <CandidateDetailModal
           candidate={candidates.find((c) => c.id === selectedCandidate)!}
+          remoteStreams={remoteStreams}
           events={events.filter((e) => e.userId === selectedCandidate)}
           onClose={() => setSelectedCandidate(null)}
           onFlag={() => handleFlagCandidate(selectedCandidate)}
@@ -487,6 +488,12 @@ function CandidateCard({
   onClick,
   onFlag,
 }: CandidateCardProps): JSX.Element {
+  console.log('[CandidateCard] Rendering:', candidate.id, {
+    hasWebcamStream: !!candidate.webcamStream,
+    webcamActive: candidate.webcamStream?.active,
+    webcamTracks: candidate.webcamStream?.getVideoTracks().length,
+  });
+
   const connectionColors = {
     good: 'border-green-500',
     fair: 'border-yellow-500',
@@ -509,10 +516,34 @@ function CandidateCard({
             playsInline
             muted
             ref={(video) => {
-              if (video && video.srcObject !== candidate.webcamStream) {
-                video.srcObject = candidate.webcamStream!;
+              if (video && candidate.webcamStream && video.srcObject !== candidate.webcamStream) {
+                const tracks = candidate.webcamStream.getVideoTracks();
+                console.log('[CandidateCard Video] Setting srcObject for', candidate.id, {
+                  streamId: candidate.webcamStream.id,
+                  active: candidate.webcamStream.active,
+                  trackCount: tracks.length,
+                  trackDetails: tracks.map(t => ({ 
+                    id: t.id, 
+                    label: t.label,
+                    enabled: t.enabled, 
+                    muted: t.muted,
+                    readyState: t.readyState 
+                  })),
+                });
+                video.srcObject = candidate.webcamStream;
+                // Manually trigger play to ensure video starts
+                const playPromise = video.play();
+                if (playPromise !== undefined) {
+                  playPromise
+                    .then(() => console.log('[CandidateCard Video] Playing', candidate.id))
+                    .catch(e => console.error('[CandidateCard Video] Play failed:', e));
+                }
               }
             }}
+            onLoadedMetadata={(e) => console.log('[CandidateCard Video] Metadata loaded', candidate.id, e.currentTarget.videoWidth, 'x', e.currentTarget.videoHeight)}
+            onError={(e) => console.error('[CandidateCard Video] Error', candidate.id, e)}
+            onLoadStart={() => console.log('[CandidateCard Video] Load started', candidate.id)}
+            onCanPlay={() => console.log('[CandidateCard Video] Can play', candidate.id)}
             className="w-full h-full object-cover"
           />
         ) : (
@@ -668,8 +699,17 @@ function EventCard({ event }: { event: ProctoringEvent }): JSX.Element {
   );
 }
 
+interface RemoteStream {
+  peerId: string;
+  displayName?: string;
+  webcamStream?: MediaStream;
+  screenStream?: MediaStream;
+  audioStream?: MediaStream;
+}
+
 interface CandidateDetailModalProps {
   candidate: CandidateData;
+  remoteStreams: Map<string, RemoteStream>;
   events: ProctoringEvent[];
   onClose: () => void;
   onFlag: () => void;
@@ -677,10 +717,24 @@ interface CandidateDetailModalProps {
 
 function CandidateDetailModal({
   candidate,
+  remoteStreams,
   events,
   onClose,
   onFlag,
 }: CandidateDetailModalProps): JSX.Element {
+  // Get fresh stream references directly from the map
+  const stream = remoteStreams.get(candidate.id);
+  const webcamStream = stream?.webcamStream || candidate.webcamStream;
+  const screenStream = stream?.screenStream || candidate.screenStream;
+  
+  console.log('[CandidateDetailModal] Rendering for:', candidate.id, {
+    streamFromMap: !!stream,
+    webcamStream: !!webcamStream,
+    screenStream: !!screenStream,
+    candidateWebcam: !!candidate.webcamStream,
+    candidateScreen: !!candidate.screenStream,
+  });
+
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={onClose}>
       <div
@@ -712,17 +766,28 @@ function CandidateDetailModal({
           <div>
             <h3 className="font-semibold mb-2">📷 Webcam Feed</h3>
             <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center">
-              {candidate.webcamStream ? (
+              {webcamStream ? (
                 <video
+                  key={`webcam-${candidate.id}-${webcamStream.id}`}
                   autoPlay
                   playsInline
                   muted
                   ref={(video) => {
-                    if (video && video.srcObject !== candidate.webcamStream) {
-                      console.log('[Video] Setting webcam srcObject for', candidate.id);
-                      video.srcObject = candidate.webcamStream!;
+                    if (video && webcamStream && video.srcObject !== webcamStream) {
+                      console.log('[Video] Setting webcam srcObject for', candidate.id, webcamStream);
+                      video.srcObject = webcamStream;
+                      const playPromise = video.play();
+                      if (playPromise !== undefined) {
+                        playPromise
+                          .then(() => console.log('[Video] Webcam playing'))
+                          .catch(e => console.error('[Video] Webcam play failed:', e));
+                      }
                     }
                   }}
+                  onLoadedMetadata={(e) => console.log('[Video] Webcam metadata loaded', e.currentTarget.videoWidth, e.currentTarget.videoHeight)}
+                  onError={(e) => console.error('[Video] Webcam error', e)}
+                  onLoadStart={() => console.log('[Video] Webcam load started')}
+                  onCanPlay={() => console.log('[Video] Webcam can play')}
                   className="w-full h-full object-cover rounded-lg"
                 />
               ) : (
@@ -737,17 +802,28 @@ function CandidateDetailModal({
           <div>
             <h3 className="font-semibold mb-2">🖥️ Screen Share</h3>
             <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center">
-              {candidate.screenStream ? (
+              {screenStream ? (
                 <video
+                  key={`screen-${candidate.id}-${screenStream.id}`}
                   autoPlay
                   playsInline
                   muted
                   ref={(video) => {
-                    if (video && video.srcObject !== candidate.screenStream) {
-                      console.log('[Video] Setting screen srcObject for', candidate.id);
-                      video.srcObject = candidate.screenStream!;
+                    if (video && screenStream && video.srcObject !== screenStream) {
+                      console.log('[Video] Setting screen srcObject for', candidate.id, screenStream);
+                      video.srcObject = screenStream;
+                      const playPromise = video.play();
+                      if (playPromise !== undefined) {
+                        playPromise
+                          .then(() => console.log('[Video] Screen playing'))
+                          .catch(e => console.error('[Video] Screen play failed:', e));
+                      }
                     }
                   }}
+                  onLoadedMetadata={(e) => console.log('[Video] Screen metadata loaded', e.currentTarget.videoWidth, e.currentTarget.videoHeight)}
+                  onError={(e) => console.error('[Video] Screen error', e)}
+                  onLoadStart={() => console.log('[Video] Screen load started')}
+                  onCanPlay={() => console.log('[Video] Screen can play')}
                   className="w-full h-full object-contain rounded-lg"
                 />
               ) : (
@@ -774,14 +850,14 @@ function CandidateDetailModal({
             </div>
             <div className="bg-gray-800 p-3 rounded-lg">
               <p className="text-xs text-gray-400">Webcam</p>
-              <p className={`font-semibold ${candidate.mediaState.webcamEnabled ? 'text-green-400' : 'text-red-400'}`}>
-                {candidate.mediaState.webcamEnabled ? 'On' : 'Off'}
+              <p className={`font-semibold ${webcamStream || candidate.mediaState.webcamEnabled ? 'text-green-400' : 'text-red-400'}`}>
+                {webcamStream || candidate.mediaState.webcamEnabled ? 'On' : 'Off'}
               </p>
             </div>
             <div className="bg-gray-800 p-3 rounded-lg">
               <p className="text-xs text-gray-400">Screen Share</p>
-              <p className={`font-semibold ${candidate.mediaState.screenShareEnabled ? 'text-green-400' : 'text-red-400'}`}>
-                {candidate.mediaState.screenShareEnabled ? 'On' : 'Off'}
+              <p className={`font-semibold ${screenStream || candidate.mediaState.screenShareEnabled ? 'text-green-400' : 'text-red-400'}`}>
+                {screenStream || candidate.mediaState.screenShareEnabled ? 'On' : 'Off'}
               </p>
             </div>
           </div>

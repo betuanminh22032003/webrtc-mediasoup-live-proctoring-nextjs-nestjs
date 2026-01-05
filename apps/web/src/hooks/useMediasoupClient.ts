@@ -507,8 +507,23 @@ export function useMediasoupClient({
       const trackType = consumerParams.appData?.trackType as string | undefined;
       console.log('[WebSocket] Consumer appData:', consumerParams.appData, 'trackType:', trackType);
 
+      // Log consumer track details
+      console.log('[WebSocket] Consumer track details:', {
+        id: consumer.track.id,
+        kind: consumer.track.kind,
+        label: consumer.track.label,
+        enabled: consumer.track.enabled,
+        muted: consumer.track.muted,
+        readyState: consumer.track.readyState,
+      });
+
       // Create MediaStream from consumer track
       const stream = new MediaStream([consumer.track]);
+      console.log('[WebSocket] Created MediaStream:', {
+        streamId: stream.id,
+        active: stream.active,
+        trackCount: stream.getTracks().length,
+      });
 
       // Update remote streams
       setRemoteStreams((prev) => {
