@@ -325,6 +325,14 @@ export function useMediasoupClient({
         recvTransportRef.current = transport;
       }
 
+      // Monitor transport connection state
+      transport.on('connectionstatechange', (state) => {
+        console.log(`[Transport] ${direction} transport connection state: ${state}`);
+        if (state === 'failed') {
+          console.error(`[Transport] ${direction} transport connection failed!`);
+        }
+      });
+
       console.log(`[Transport] ${direction} transport created:`, transport.id);
       return transport;
     } catch (error) {
@@ -386,6 +394,14 @@ export function useMediasoupClient({
         return null;
       }
 
+      console.log('[Produce] Webcam track info:', {
+        id: videoTrack.id,
+        label: videoTrack.label,
+        enabled: videoTrack.enabled,
+        muted: videoTrack.muted,
+        readyState: videoTrack.readyState,
+      });
+
       const producer = await sendTransportRef.current.produce({
         track: videoTrack,
         encodings: [
@@ -396,7 +412,15 @@ export function useMediasoupClient({
       });
 
       producersRef.current.set(producer.id, producer);
-      console.log('Webcam producer created:', producer.id);
+      console.log('Webcam producer created:', producer.id, {
+        paused: producer.paused,
+        track: {
+          id: producer.track?.id,
+          enabled: producer.track?.enabled,
+          muted: producer.track?.muted,
+          readyState: producer.track?.readyState,
+        }
+      });
       return producer.id;
     } catch (error) {
       console.error('Failed to produce webcam:', error);
@@ -524,12 +548,21 @@ export function useMediasoupClient({
         readyState: consumer.track.readyState,
       });
 
+      // IMPORTANT: Ensure track is enabled
+      if (!consumer.track.enabled) {
+        console.warn('[WebSocket] Track was disabled, enabling it');
+        consumer.track.enabled = true;
+      }
+
       // Add event listeners to track to monitor its state
       consumer.track.addEventListener('ended', () => {
         console.warn('[Track] Track ended:', consumer.track.id);
       });
       consumer.track.addEventListener('mute', () => {
-        console.warn('[Track] Track muted:', consumer.track.id);
+        console.warn('[Track] Track muted:', consumer.track.id, {
+          enabled: consumer.track.enabled,
+          readyState: consumer.track.readyState,
+        });
       });
       consumer.track.addEventListener('unmute', () => {
         console.log('[Track] Track unmuted:', consumer.track.id);
@@ -553,10 +586,20 @@ export function useMediasoupClient({
         if (consumer.kind === 'video') {
           if (trackType === 'screen') {
             existing.screenStream = stream;
-            console.log('[WebSocket] Set screenStream for peer:', producerPeerId);
+            console.log('[WebSocket] Set screenStream for peer:', producerPeerId, {
+              streamActive: stream.active,
+              trackEnabled: consumer.track.enabled,
+              trackMuted: consumer.track.muted,
+              trackReadyState: consumer.track.readyState,
+            });
           } else {
             existing.webcamStream = stream;
-            console.log('[WebSocket] Set webcamStream for peer:', producerPeerId);
+            console.log('[WebSocket] Set webcamStream for peer:', producerPeerId, {
+              streamActive: stream.active,
+              trackEnabled: consumer.track.enabled,
+              trackMuted: consumer.track.muted,
+              trackReadyState: consumer.track.readyState,
+            });
           }
         } else if (consumer.kind === 'audio') {
           existing.audioStream = stream;
@@ -571,24 +614,74 @@ export function useMediasoupClient({
       // Also update store for global access
       addRemoteStream(producerPeerId, stream);
 
-      // Resume consumer
-      console.log('[WebSocket] Resuming consumer:', consumer.id, 'currently paused:', consumer.paused);
+      // Resume consumer on server
+      console.log('[WebSocket] Resuming consumer on server:', consumer.id, 'currently paused:', consumer.paused);
       sendMessageNoWait(SignalMessageType.CONSUMER_RESUME, {
         consumerId: consumer.id,
       });
 
-      // Wait a bit and check if consumer is still paused
-      setTimeout(() => {
-        console.log('[WebSocket] Consumer state after resume request:', {
-          consumerId: consumer.id,
-          paused: consumer.paused,
-          track: {
-            enabled: consumer.track.enabled,
-            muted: consumer.track.muted,
-            readyState: consumer.track.readyState,
-          },
+      // Wait for CONSUMER_RESUMED confirmation
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          wsRef.current?.removeEventListener('message', handler);
+          console.warn('[WebSocket] Consumer resume timeout, proceeding anyway');
+          resolve(); // Don't fail, just proceed
+        }, 5000);
+
+        const handler = (event: MessageEvent) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === SignalMessageType.CONSUMER_RESUMED && data.payload?.consumerId === consumer.id) {
+              clearTimeout(timeout);
+              wsRef.current?.removeEventListener('message', handler);
+              console.log('[WebSocket] Consumer resumed confirmed by server:', consumer.id);
+              resolve();
+            }
+          } catch {
+            // Ignore
+          }
+        };
+        wsRef.current?.addEventListener('message', handler);
+      });
+
+      // CRITICAL: Resume consumer on CLIENT side too!
+      // The server-side consumer is resumed, but client Consumer also needs resume
+      if (consumer.paused) {
+        console.log('[WebSocket] Resuming client-side consumer:', consumer.id);
+        await consumer.resume();
+      }
+      console.log('[WebSocket] Client consumer resumed, paused:', consumer.paused);
+
+      // Wait for track to unmute (receive first media data)
+      if (consumer.track.muted) {
+        console.log('[WebSocket] Track is muted, waiting for media data...');
+        await new Promise<void>((resolve) => {
+          const onUnmute = () => {
+            console.log('[WebSocket] ✅ Track unmuted - receiving media!');
+            consumer.track.removeEventListener('unmute', onUnmute);
+            resolve();
+          };
+          consumer.track.addEventListener('unmute', onUnmute);
+          
+          // Timeout after 10 seconds
+          setTimeout(() => {
+            consumer.track.removeEventListener('unmute', onUnmute);
+            console.warn('[WebSocket] Track unmute timeout - may not receive media');
+            resolve();
+          }, 10000);
         });
-      }, 500);
+      }
+
+      // Verify consumer state after resume
+      console.log('[WebSocket] Consumer state after resume:', {
+        consumerId: consumer.id,
+        paused: consumer.paused,
+        track: {
+          enabled: consumer.track.enabled,
+          muted: consumer.track.muted,
+          readyState: consumer.track.readyState,
+        },
+      });
 
       console.log(`Consumer created for producer ${producerId} from peer ${producerPeerId}:`, consumer.id);
     } catch (error) {
@@ -724,6 +817,13 @@ export function useMediasoupClient({
           removeRemoteStream(leftUserId);
           // Remove from participants
           removeParticipant(leftUserId);
+          break;
+        }
+
+        case SignalMessageType.CONSUMER_RESUMED: {
+          const { consumerId } = message.payload as { consumerId: string };
+          console.log('[WebSocket] Consumer resumed confirmed by server:', consumerId);
+          // This is handled by the promise listener in consumeProducer
           break;
         }
 

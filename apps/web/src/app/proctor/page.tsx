@@ -12,7 +12,7 @@
  * PHASE 3: Proctoring Logic Implementation
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ConnectionState,
@@ -480,6 +480,73 @@ interface CandidateCardProps {
   isSelected: boolean;
   onClick: () => void;
   onFlag: () => void;
+  disableVideo?: boolean;
+}
+
+// Simple video component - just play the stream
+function SimpleVideo({ stream, className }: { stream: MediaStream | undefined; className?: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !stream) {
+      streamIdRef.current = null;
+      return;
+    }
+
+    // Skip if same stream already attached
+    if (streamIdRef.current === stream.id) {
+      return;
+    }
+    streamIdRef.current = stream.id;
+
+    video.srcObject = stream;
+
+    const track = stream.getVideoTracks()[0];
+    if (!track) return;
+
+    const tryPlay = () => {
+      video.play().catch((e) => {
+        // Ignore AbortError - it's expected when component re-renders
+        if (e.name !== 'AbortError') {
+          console.error('[SimpleVideo] Play error:', e);
+        }
+      });
+    };
+
+    // If track is muted, wait for unmute
+    if (track.muted) {
+      const onUnmute = () => {
+        track.removeEventListener('unmute', onUnmute);
+        tryPlay();
+      };
+      track.addEventListener('unmute', onUnmute);
+      // Also try immediately
+      tryPlay();
+      return () => track.removeEventListener('unmute', onUnmute);
+    } else {
+      tryPlay();
+    }
+  }, [stream?.id]);
+
+  if (!stream) {
+    return (
+      <div className={`${className} flex items-center justify-center bg-gray-800`}>
+        <span className="text-4xl opacity-30">👤</span>
+      </div>
+    );
+  }
+
+  return (
+    <video
+      ref={videoRef}
+      autoPlay
+      playsInline
+      muted
+      className={className}
+    />
+  );
 }
 
 function CandidateCard({
@@ -488,12 +555,6 @@ function CandidateCard({
   onClick,
   onFlag,
 }: CandidateCardProps): JSX.Element {
-  console.log('[CandidateCard] Rendering:', candidate.id, {
-    hasWebcamStream: !!candidate.webcamStream,
-    webcamActive: candidate.webcamStream?.active,
-    webcamTracks: candidate.webcamStream?.getVideoTracks().length,
-  });
-
   const connectionColors = {
     good: 'border-green-500',
     fair: 'border-yellow-500',
@@ -510,47 +571,7 @@ function CandidateCard({
     >
       {/* Video Area */}
       <div className="aspect-video bg-gray-800 relative">
-        {candidate.webcamStream ? (
-          <video
-            autoPlay
-            playsInline
-            muted
-            ref={(video) => {
-              if (video && candidate.webcamStream && video.srcObject !== candidate.webcamStream) {
-                const tracks = candidate.webcamStream.getVideoTracks();
-                console.log('[CandidateCard Video] Setting srcObject for', candidate.id, {
-                  streamId: candidate.webcamStream.id,
-                  active: candidate.webcamStream.active,
-                  trackCount: tracks.length,
-                  trackDetails: tracks.map(t => ({ 
-                    id: t.id, 
-                    label: t.label,
-                    enabled: t.enabled, 
-                    muted: t.muted,
-                    readyState: t.readyState 
-                  })),
-                });
-                video.srcObject = candidate.webcamStream;
-                // Manually trigger play to ensure video starts
-                const playPromise = video.play();
-                if (playPromise !== undefined) {
-                  playPromise
-                    .then(() => console.log('[CandidateCard Video] Playing', candidate.id))
-                    .catch(e => console.error('[CandidateCard Video] Play failed:', e));
-                }
-              }
-            }}
-            onLoadedMetadata={(e) => console.log('[CandidateCard Video] Metadata loaded', candidate.id, e.currentTarget.videoWidth, 'x', e.currentTarget.videoHeight)}
-            onError={(e) => console.error('[CandidateCard Video] Error', candidate.id, e)}
-            onLoadStart={() => console.log('[CandidateCard Video] Load started', candidate.id)}
-            onCanPlay={() => console.log('[CandidateCard Video] Can play', candidate.id)}
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <div className="text-6xl opacity-30">👤</div>
-          </div>
-        )}
+        <SimpleVideo stream={candidate.webcamStream} className="w-full h-full object-cover" />
 
         {/* Overlay indicators */}
         <div className="absolute top-2 left-2 flex gap-1">
@@ -726,14 +747,6 @@ function CandidateDetailModal({
   const stream = remoteStreams.get(candidate.id);
   const webcamStream = stream?.webcamStream || candidate.webcamStream;
   const screenStream = stream?.screenStream || candidate.screenStream;
-  
-  console.log('[CandidateDetailModal] Rendering for:', candidate.id, {
-    streamFromMap: !!stream,
-    webcamStream: !!webcamStream,
-    screenStream: !!screenStream,
-    candidateWebcam: !!candidate.webcamStream,
-    candidateScreen: !!candidate.screenStream,
-  });
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={onClose}>
@@ -765,73 +778,13 @@ function CandidateDetailModal({
           {/* Webcam View */}
           <div>
             <h3 className="font-semibold mb-2">📷 Webcam Feed</h3>
-            <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center">
-              {webcamStream ? (
-                <video
-                  key={`webcam-${candidate.id}-${webcamStream.id}`}
-                  autoPlay
-                  playsInline
-                  muted
-                  ref={(video) => {
-                    if (video && webcamStream && video.srcObject !== webcamStream) {
-                      console.log('[Video] Setting webcam srcObject for', candidate.id, webcamStream);
-                      video.srcObject = webcamStream;
-                      const playPromise = video.play();
-                      if (playPromise !== undefined) {
-                        playPromise
-                          .then(() => console.log('[Video] Webcam playing'))
-                          .catch(e => console.error('[Video] Webcam play failed:', e));
-                      }
-                    }
-                  }}
-                  onLoadedMetadata={(e) => console.log('[Video] Webcam metadata loaded', e.currentTarget.videoWidth, e.currentTarget.videoHeight)}
-                  onError={(e) => console.error('[Video] Webcam error', e)}
-                  onLoadStart={() => console.log('[Video] Webcam load started')}
-                  onCanPlay={() => console.log('[Video] Webcam can play')}
-                  className="w-full h-full object-cover rounded-lg"
-                />
-              ) : (
-                <span className="text-gray-500">
-                  {candidate.mediaState.webcamEnabled ? 'Connecting...' : '📷 Webcam Disabled'}
-                </span>
-              )}
-            </div>
+            <SimpleVideo stream={webcamStream} className="aspect-video w-full rounded-lg object-cover" />
           </div>
 
           {/* Screen Share View */}
           <div>
             <h3 className="font-semibold mb-2">🖥️ Screen Share</h3>
-            <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center">
-              {screenStream ? (
-                <video
-                  key={`screen-${candidate.id}-${screenStream.id}`}
-                  autoPlay
-                  playsInline
-                  muted
-                  ref={(video) => {
-                    if (video && screenStream && video.srcObject !== screenStream) {
-                      console.log('[Video] Setting screen srcObject for', candidate.id, screenStream);
-                      video.srcObject = screenStream;
-                      const playPromise = video.play();
-                      if (playPromise !== undefined) {
-                        playPromise
-                          .then(() => console.log('[Video] Screen playing'))
-                          .catch(e => console.error('[Video] Screen play failed:', e));
-                      }
-                    }
-                  }}
-                  onLoadedMetadata={(e) => console.log('[Video] Screen metadata loaded', e.currentTarget.videoWidth, e.currentTarget.videoHeight)}
-                  onError={(e) => console.error('[Video] Screen error', e)}
-                  onLoadStart={() => console.log('[Video] Screen load started')}
-                  onCanPlay={() => console.log('[Video] Screen can play')}
-                  className="w-full h-full object-contain rounded-lg"
-                />
-              ) : (
-                <span className="text-gray-500">
-                  {candidate.mediaState.screenShareEnabled ? 'Connecting...' : '🖥️ Screen Share Disabled'}
-                </span>
-              )}
-            </div>
+            <SimpleVideo stream={screenStream} className="aspect-video w-full rounded-lg object-contain" />
           </div>
         </div>
 
